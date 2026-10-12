@@ -215,6 +215,7 @@ fn finish(app: &AppHandle, id: i64, outcome: Res<i64>) {
         }
         Err(e) => {
             let _ = db::set_status(&db, id, "failed", Some(&e));
+            let _ = app.emit("recorder-error", e);
         }
     }
     changed(app);

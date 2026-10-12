@@ -48,19 +48,22 @@ func defaultInputUID() -> String? {
     return stringProperty(id, kAudioDevicePropertyDeviceUID)
 }
 
-func listDevices() {
+func inputDevices() -> [[String: String]] {
     var addr = address(kAudioHardwarePropertyDevices)
     var size: UInt32 = 0
     AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size)
     var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
     AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids)
-    let devices: [[String: Any]] = ids.compactMap { id in
+    return ids.compactMap { id in
         guard inputChannels(id).reduce(0, +) > 0,
               let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
               let name = stringProperty(id, kAudioObjectPropertyName) else { return nil }
         return ["id": uid, "name": name]
     }
-    let data = try! JSONSerialization.data(withJSONObject: devices)
+}
+
+func listDevices() {
+    let data = try! JSONSerialization.data(withJSONObject: inputDevices())
     print(String(data: data, encoding: .utf8)!)
 }
 
@@ -122,7 +125,8 @@ final class Recorder {
         FileManager.default.createFile(atPath: rawURL.path, contents: nil)
         raw = try! FileHandle(forWritingTo: rawURL)
 
-        guard let mic = micUID ?? defaultInputUID() else { fail("No input device") }
+        let available = Set(inputDevices().compactMap { $0["id"] })
+        guard let mic = micUID.flatMap({ available.contains($0) ? $0 : nil }) ?? defaultInputUID() else { fail("No input device") }
         var desc: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Muesli Recorder",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
