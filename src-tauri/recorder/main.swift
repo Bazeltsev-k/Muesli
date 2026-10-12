@@ -210,26 +210,43 @@ func finalize(_ dir: URL) {
         guard let metaData = try? Data(contentsOf: dir.appendingPathComponent("raw.json")),
               let meta = try? JSONSerialization.jsonObject(with: metaData) as? [String: Double],
               let rate = meta["rate"] else { fail("Missing raw.json") }
-        var settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate, AVNumberOfChannelsKey: 2]
-        if rate >= 32000 { settings[AVEncoderBitRateKey] = 96000 }
+        let outRate = min(rate, 48000)
+        var settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: outRate, AVNumberOfChannelsKey: 2]
+        if outRate >= 32000 { settings[AVEncoderBitRateKey] = 96000 }
         let tmpURL = dir.appendingPathComponent("audio.tmp.m4a")
         try? FileManager.default.removeItem(at: tmpURL)
         do {
             let out = try AVAudioFile(forWriting: tmpURL, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
             let input = try FileHandle(forReadingFrom: rawURL)
             let chunk = 16384
-            let buffer = AVAudioPCMBuffer(pcmFormat: out.processingFormat, frameCapacity: AVAudioFrameCount(chunk))!
-            while let data = try input.read(upToCount: chunk * 4), !data.isEmpty {
-                let n = data.count / 4
-                data.withUnsafeBytes { bytes in
-                    let samples = bytes.bindMemory(to: Int16.self)
-                    for i in 0..<n {
-                        buffer.floatChannelData![0][i] = Float(samples[i * 2]) / 32768
-                        buffer.floatChannelData![1][i] = Float(samples[i * 2 + 1]) / 32768
+            let source = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 2)!
+            guard let converter = AVAudioConverter(from: source, to: out.processingFormat) else { fail("Unsupported sample rate \(rate)") }
+            let inBuffer = AVAudioPCMBuffer(pcmFormat: source, frameCapacity: AVAudioFrameCount(chunk))!
+            let outBuffer = AVAudioPCMBuffer(pcmFormat: out.processingFormat, frameCapacity: AVAudioFrameCount(chunk))!
+            var finished = false
+            while true {
+                var error: NSError?
+                let status = converter.convert(to: outBuffer, error: &error) { _, inputStatus in
+                    guard !finished, let data = try? input.read(upToCount: chunk * 4), !data.isEmpty else {
+                        finished = true
+                        inputStatus.pointee = .endOfStream
+                        return nil
                     }
+                    let n = data.count / 4
+                    data.withUnsafeBytes { bytes in
+                        let samples = bytes.bindMemory(to: Int16.self)
+                        for i in 0..<n {
+                            inBuffer.floatChannelData![0][i] = Float(samples[i * 2]) / 32768
+                            inBuffer.floatChannelData![1][i] = Float(samples[i * 2 + 1]) / 32768
+                        }
+                    }
+                    inBuffer.frameLength = AVAudioFrameCount(n)
+                    inputStatus.pointee = .haveData
+                    return inBuffer
                 }
-                buffer.frameLength = AVAudioFrameCount(n)
-                try out.write(from: buffer)
+                if let error { throw error }
+                if outBuffer.frameLength > 0 { try out.write(from: outBuffer) }
+                if status == .endOfStream || status == .error { break }
             }
         } catch {
             fail("Encoding audio failed: \(error.localizedDescription)")

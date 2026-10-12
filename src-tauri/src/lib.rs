@@ -520,7 +520,17 @@ pub fn run() {
 
             let (jobs, rx) = mpsc::channel();
             let pending = db::ids_with_status(&conn, &["queued", "transcribing"])?;
-            let interrupted = db::ids_with_status(&conn, &["recording"])?;
+            let mut interrupted = db::ids_with_status(&conn, &["recording"])?;
+            interrupted.extend(
+                db::ids_with_status(&conn, &["failed"])?
+                    .into_iter()
+                    .filter(|id| {
+                        dir.join("recordings")
+                            .join(id.to_string())
+                            .join("raw.pcm")
+                            .exists()
+                    }),
+            );
             let hotkey = settings.hotkey.clone();
             app.manage(AppState {
                 db: Mutex::new(conn),
