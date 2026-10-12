@@ -1,187 +1,471 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { api, type Level, type Settings } from "./lib/api";
-import { Ctx, useTauriEvent, type AppContext, type View } from "./lib/context";
-import { formatTime } from "./lib/format";
-import { Library } from "./views/Library";
-import { Detail } from "./views/Detail";
-import { SettingsView } from "./views/Settings";
+import { T, TOUR_STEPS, type Lang } from "./i18n";
+import { api, type Level, type Permissions, type Recording, type Settings, type Tag, type Theme } from "./lib/api";
+import { Ctx, type AppCtx, type Playback, type View } from "./lib/app";
+import { useTauriEvent } from "./lib/util";
+import { Icon, type TagOps } from "./components/Controls";
+import { Picker } from "./components/Picker";
+import { Pip, PlayPip } from "./components/Floating";
+import { Tour } from "./components/Tour";
+import { Home, Notch, RecMeta, TagFilters, groupByDay } from "./views/Home";
+import { RecordingView } from "./views/Recording";
+import { SECTIONS, SettingsView } from "./views/Settings";
 
-function useTheme(theme: Settings["theme"] | undefined) {
-  useEffect(() => {
-    if (!theme) return;
-    const media = matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-      const dark = theme === "dark" || (theme === "system" && media.matches);
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
-    };
-    apply();
-    media.addEventListener("change", apply);
-    getCurrentWindow().setTheme(theme === "system" ? null : theme).catch(() => {});
-    return () => media.removeEventListener("change", apply);
-  }, [theme]);
-}
+const DEFAULT_THEME: Theme = { h: 8, c: 62, bh: 8, bc: 30, grain: 0.5, bgrain: 0.3, depth: 0.25, lift: 0.1, mode: "auto" };
 
 export default function App() {
-  const [view, setView] = useState<View>({ name: "library" });
   const [settings, setSettings] = useState<Settings | null>(null);
+  useEffect(() => {
+    api.getSettings().then(setSettings);
+  }, []);
+  if (!settings) return null;
+  return <Shell initial={settings} />;
+}
+
+function Shell({ initial }: { initial: Settings }) {
+  const [settings, setSettings] = useState(initial);
+  const [view, setView] = useState<View>({ name: "home" });
+  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [query, setQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [level, setLevel] = useState<Level>({ mic: 0, sys: 0, ms: 0 });
   const [paused, setPausedState] = useState(false);
-  const [starting, setStarting] = useState(false);
+  const [progress, setProgress] = useState<Record<number, number>>({});
+  const [playback, setPlayback] = useState<Playback | null>(null);
+  const [time, setTime] = useState(0);
+  const [modelReady, setModelReady] = useState(false);
+  const [perms, setPerms] = useState<Permissions | null>(null);
+  const [picker, setPicker] = useState<DOMRect | null>(null);
+  const [tour, setTour] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [update, setUpdate] = useState<Update | null>(null);
+  const [section, setSection] = useState<string>("general");
+  const audio = useRef<HTMLAudioElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const saveTimer = useRef<number>(undefined);
 
-  useEffect(() => {
-    api.getSettings().then(setSettings);
-    api.activeRecording().then(setActiveId);
+  const lang: Lang = settings.ui?.lang ?? "en";
+  const t = T[lang];
+  const theme: Theme = { ...DEFAULT_THEME, ...settings.ui?.theme };
+
+  const notify = useCallback((m: unknown) => {
+    setToast(String(m));
+    window.setTimeout(() => setToast(null), 3000);
   }, []);
-  useTheme(settings?.theme);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 5000);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  const notify = useCallback((message: unknown) => setToast(String(message)), []);
-
-  useEffect(() => {
-    if (settings?.checkUpdates) check().then(setUpdate).catch(() => {});
-  }, [settings?.checkUpdates]);
-
-  useTauriEvent<number | null>("recorder-state", (id) => {
-    setActiveId(id);
-    setStarting(false);
-    setPausedState(false);
-    setLevel({ mic: 0, sys: 0, ms: 0 });
-    if (id !== null) setView({ name: "detail", id });
-  });
-  useTauriEvent<Level>("recorder-level", setLevel);
-  useTauriEvent<string>("recorder-error", (message) => {
-    setStarting(false);
-    notify(message);
-  });
-
-  const updateSettings = useCallback(
-    async (patch: Partial<Settings>) => {
-      if (!settings) return;
-      const next = { ...settings, ...patch };
-      setSettings(next);
-      try {
-        await api.saveSettings(next);
-      } catch (e) {
+  const persist = (next: Settings, delay = 0) => {
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => api.saveSettings(next).catch(notify), delay);
+  };
+  const updateSettings = (patch: Partial<Settings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    if (patch.hotkey !== undefined)
+      api.saveSettings(next).catch((e) => {
         setSettings(settings);
         notify(e);
-      }
-    },
-    [settings, notify],
-  );
-
-  const ctx = useMemo<AppContext | null>(
-    () =>
-      settings && {
-        settings,
-        updateSettings,
-        activeId,
-        level,
-        paused,
-        setPaused: (p) => {
-          setPausedState(p);
-          api.pauseRecording(p);
-        },
-        go: setView,
-        notify,
-      },
-    [settings, updateSettings, activeId, level, paused, notify],
-  );
-
-  if (!ctx) return null;
-
-  const record = () => {
-    if (activeId !== null) return api.stopRecording();
-    setStarting(true);
-    api.startRecording();
+      });
+    else persist(next);
   };
+  const updateUi = (patch: NonNullable<Settings["ui"]>, delay = 0) => {
+    setSettings((s) => {
+      const next = { ...s, ui: { ...s.ui, ...patch } };
+      persist(next, delay);
+      return next;
+    });
+  };
+  const setTheme = (th: Theme) => updateUi({ theme: th }, 400);
+  const setLang = (l: Lang) => updateUi({ lang: l });
+
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty("--h", String(theme.h));
+    r.style.setProperty("--c", String(theme.c));
+    r.style.setProperty("--bh", String(theme.bh));
+    r.style.setProperty("--bc", String(theme.bc));
+    r.style.setProperty("--grain", String(theme.grain));
+    r.style.setProperty("--bgrain", String(theme.bgrain));
+    r.style.setProperty("--depth", String(theme.depth));
+    r.style.setProperty("--lift", String(theme.lift));
+    if (theme.mode === "auto") r.removeAttribute("data-theme");
+    else r.setAttribute("data-theme", theme.mode);
+    r.lang = lang;
+    getCurrentWindow()
+      .setTheme(theme.mode === "auto" ? null : theme.mode)
+      .catch(() => {});
+  }, [JSON.stringify(theme), lang]);
+
+  const loadList = useCallback(() => {
+    api.listRecordings(query, tagFilter).then(setRecordings).catch(notify);
+    api.allTags().then(setTags).catch(notify);
+  }, [query, tagFilter]);
+  useEffect(loadList, [loadList]);
+  const refreshPerms = useCallback(() => {
+    api.permissions().then(setPerms).catch(() => {});
+  }, []);
+  useEffect(() => {
+    api.activeRecording().then(setActiveId);
+    api.modelInstalled().then(setModelReady);
+    refreshPerms();
+    if (settings.checkUpdates) check().then(setUpdate).catch(() => {});
+    if (!settings.ui?.toured) {
+      const id = window.setTimeout(() => setTour(0), 700);
+      return () => window.clearTimeout(id);
+    }
+  }, []);
+
+  const go = (v: View) => {
+    if (playback?.playing && !(v.name === "rec" && v.id === playback.id)) setPlayback((p) => p && { ...p, pinned: true });
+    setView(v);
+    setPicker(null);
+  };
+  const newRecording = () =>
+    api
+      .createDraft()
+      .then((id) => go({ name: "rec", id }))
+      .catch(notify);
+
+  useTauriEvent("recordings-changed", loadList);
+  useTauriEvent<number | null>("recorder-state", (id) => {
+    setActiveId(id);
+    setPausedState(false);
+    setLevel({ mic: 0, sys: 0, ms: 0 });
+  });
+  useTauriEvent<Level>("recorder-level", setLevel);
+  useTauriEvent<string>("recorder-error", notify);
+  useTauriEvent<[number, number]>("transcribe-progress", ([id, p]) => setProgress((x) => ({ ...x, [id]: p })));
+  useTauriEvent("open-draft", newRecording);
+
+  const tagOps: TagOps = {
+    recolor: (name, color) => api.setTagColor(name, color).catch(notify),
+    rename: (from, to) =>
+      api
+        .renameTag(from, to)
+        .then(() => tagFilter === from && setTagFilter(to))
+        .catch(notify),
+    remove: (name) =>
+      api
+        .deleteTag(name)
+        .then(() => tagFilter === name && setTagFilter(null))
+        .catch(notify),
+  };
+
+  const loadSource = async (id: number) => {
+    const el = audio.current!;
+    if (playback?.id === id && el.src) return el;
+    const path = await api.audioPath(id);
+    el.src = convertFileSrc(path);
+    el.playbackRate = playback?.rate ?? 1;
+    setPlayback({ id, playing: false, rate: playback?.rate ?? 1, pinned: false });
+    setTime(0);
+    return el;
+  };
+  const play = async (id: number) => {
+    const el = await loadSource(id);
+    await el.play().catch(notify);
+  };
+  const toggle = () => {
+    const el = audio.current!;
+    if (el.paused) el.play().catch(notify);
+    else el.pause();
+  };
+  const seek = async (id: number, ms: number) => {
+    const el = await loadSource(id);
+    const apply = () => {
+      el.currentTime = ms / 1000;
+      setTime(ms);
+    };
+    if (el.readyState >= 1) apply();
+    else el.addEventListener("loadedmetadata", apply, { once: true });
+  };
+  const setRate = (r: number) => {
+    if (audio.current) audio.current.playbackRate = r;
+    setPlayback((p) => p && { ...p, rate: r });
+  };
+  useEffect(() => {
+    if (!playback?.playing) return;
+    const id = window.setInterval(() => setTime((audio.current?.currentTime ?? 0) * 1000), 80);
+    return () => window.clearInterval(id);
+  }, [playback?.playing]);
+
+  const remove = (id: number) => {
+    if (playback?.id === id) {
+      audio.current?.pause();
+      setPlayback(null);
+    }
+    api
+      .deleteRecording(id)
+      .then(() => {
+        if (view.name === "rec" && view.id === id) setView({ name: "home" });
+        notify(t.deleted);
+      })
+      .catch(notify);
+  };
+
+  const setPaused = (p: boolean) => {
+    setPausedState(p);
+    api.pauseRecording(p);
+  };
+  const stop = () => api.stopRecording().catch(notify);
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [view]);
+  useEffect(() => {
+    if (view.name !== "settings") return;
+    const el = mainRef.current;
+    if (!el) return;
+    const spy = () => {
+      const top = el.getBoundingClientRect().top;
+      let cur: string = SECTIONS[0];
+      for (const id of SECTIONS) {
+        const s = document.getElementById(id);
+        if (s && s.getBoundingClientRect().top - top < 120) cur = id;
+      }
+      setSection(cur);
+    };
+    el.addEventListener("scroll", spy);
+    spy();
+    return () => el.removeEventListener("scroll", spy);
+  }, [view.name]);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || tour !== null || picker || view.name === "home") return;
+      if ((e.target as HTMLElement).closest?.("input, textarea, .pop, .composer")) return;
+      go({ name: "home" });
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  });
+
+  const tourTarget = recordings.find((r) => r.title.startsWith("Demo: weekly")) ?? recordings.find((r) => r.status === "done");
+  useEffect(() => {
+    if (tour === null) return;
+    const st = TOUR_STEPS[tour];
+    setPicker(null);
+    if (st.view === "rec") {
+      if (tourTarget) setView({ name: "rec", id: tourTarget.id });
+      else setTour(tour + 1 < TOUR_STEPS.length ? tour + 1 : null);
+    } else setView(st.view === "home" ? { name: "home" } : { name: "settings" });
+    if (st.action === "perms") refreshPerms();
+  }, [tour]);
+  useEffect(() => {
+    if (tour === null || TOUR_STEPS[tour].action !== "perms") return;
+    const id = window.setInterval(refreshPerms, 1500);
+    return () => window.clearInterval(id);
+  }, [tour]);
+  const endTour = () => {
+    setTour(null);
+    updateUi({ toured: true });
+  };
+
+  const ctx: AppCtx = {
+    t,
+    lang,
+    setLang,
+    settings,
+    updateSettings,
+    theme,
+    setTheme,
+    view,
+    go,
+    newRecording,
+    recordings,
+    query,
+    setQuery,
+    tagFilter,
+    setTagFilter,
+    tags,
+    tagOps,
+    activeId,
+    level,
+    paused,
+    setPaused,
+    stop,
+    progress,
+    playback,
+    time,
+    play,
+    toggle,
+    seek,
+    setRate,
+    modelReady,
+    setModelReady,
+    perms,
+    refreshPerms,
+    startTour: () => setTour(0),
+    notify,
+    remove,
+  };
+
+  const liveRec = recordings.find((r) => r.id === activeId);
+  const onLivePage = activeId !== null && view.name === "rec" && view.id === activeId;
+  const playRec = playback && recordings.find((r) => r.id === playback.id);
+  const groups = useMemo(() => groupByDay(recordings, [t.today, t.yesterday, t.earlier]), [recordings, lang]);
+
+  const footer = (
+    <>
+      <button className="iconbtn" aria-pressed={view.name === "settings"} title={t.settings} onClick={() => go({ name: "settings" })}>
+        {Icon.gear}
+      </button>
+      <button className="iconbtn" aria-pressed={!!picker} title={t.appearance} onClick={(e) => setPicker(picker ? null : e.currentTarget.getBoundingClientRect())}>
+        {Icon.palette}
+      </button>
+      <div className="uilang">
+        {(["en", "uk", "ru"] as const).map((l) => (
+          <button key={l} aria-pressed={lang === l} onClick={() => setLang(l)}>
+            {l.toUpperCase()}
+          </button>
+        ))}
+      </div>
+    </>
+  );
 
   return (
     <Ctx.Provider value={ctx}>
-      <div className="flex h-full flex-col">
-        <header data-tauri-drag-region className="grid h-[52px] shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b-[1.5px] border-fg bg-side pr-4 pl-[84px]">
-          <div data-tauri-drag-region className="flex items-center gap-2.5">
-            <span className="grid size-[18px] place-items-center bg-accent">
-              <span className="size-[6px] bg-side" />
-            </span>
-            <span className="text-[15px] font-extrabold tracking-[3px] uppercase">Muesli</span>
-          </div>
-          <nav className="flex rounded-xs border border-line3">
-            {([{ name: "library" }, { name: "settings" }] as const).map((target) => {
-              const name = target.name;
-              const current = view.name === name || (name === "library" && view.name === "detail");
-              return (
-                <button
-                  key={name}
-                  onClick={() => setView(target)}
-                  className={`h-8 border-line3 px-4 text-[13.5px] font-semibold capitalize not-last:border-r ${current ? "bg-fg text-bg" : "hover:bg-raised"}`}
-                >
-                  {name}
+      <div className={"app" + (view.name === "home" ? " home" : "")}>
+        {view.name !== "home" && (
+          <aside className="side">
+            <div className="dragbar" data-tauri-drag-region />
+            {view.name === "settings" ? (
+              <nav className="toc">
+                {SECTIONS.map((id) => (
+                  <a
+                    key={id}
+                    href={"#" + id}
+                    aria-current={section === id}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      setSection(id);
+                    }}
+                  >
+                    {t.s[id]}
+                  </a>
+                ))}
+              </nav>
+            ) : (
+              <>
+                <button className="newrec" onClick={newRecording}>
+                  <i className="dot" />
+                  {t.newRec}
+                  <span className="kbd">⌃⌥R</span>
                 </button>
-              );
-            })}
-          </nav>
-          <div className="flex justify-end">
-            <button className="btn btn-rec" onClick={record} disabled={starting} title={settings ? `Hotkey: ${settings.hotkey}` : undefined}>
-              {activeId !== null ? (
-                <>
-                  <span className="size-2.5 bg-white" />
-                  Stop · <span className="tabular-nums">{formatTime(level.ms)}</span>
-                </>
-              ) : (
-                <>
-                  <span className="size-2.5 rounded-full bg-white" />
-                  {starting ? "Starting…" : "Record"}
-                </>
-              )}
-            </button>
-          </div>
-        </header>
-
-        {update && (
-          <div className="flex items-center gap-3 border-b border-line bg-panel px-6 py-2 text-[13px]">
-            <span className="font-bold">Muesli {update.version} is available.</span>
-            <button
-              className="btn h-7"
-              onClick={async () => {
-                try {
-                  await update.downloadAndInstall();
-                  await relaunch();
-                } catch (e) {
-                  notify(e);
-                }
-              }}
-            >
-              Install and restart
-            </button>
-            <button className="ml-auto text-muted hover:text-fg" onClick={() => setUpdate(null)}>
-              Later
-            </button>
-          </div>
+                <label className="search">
+                  {Icon.search}
+                  <input placeholder={t.search} value={query} onChange={(e) => setQuery(e.target.value)} />
+                </label>
+                <TagFilters />
+                <div className="list">
+                  {groups.map(
+                    ([label, items]) =>
+                      items.length > 0 && (
+                        <div key={label} style={{ display: "contents" }}>
+                          <div className="group">{label}</div>
+                          {items.map((r) => (
+                            <button key={r.id} className="item" aria-current={view.name === "rec" && view.id === r.id} onClick={() => go({ name: "rec", id: r.id })}>
+                              <Notch tags={r.tags} />
+                              <span className="t">{r.title || t.untitled}</span>
+                              <RecMeta r={r} />
+                            </button>
+                          ))}
+                        </div>
+                      ),
+                  )}
+                </div>
+              </>
+            )}
+            <div className="sidefoot">{footer}</div>
+          </aside>
         )}
-
-        <main data-scroll className="min-h-0 flex-1 overflow-auto">
-          {view.name === "library" && <Library />}
-          {view.name === "detail" && <Detail key={view.id} id={view.id} />}
+        <main className="main" ref={mainRef}>
+          {view.name !== "home" && (
+            <div className="homefab">
+              <button onClick={() => go({ name: "home" })} title={t.home} aria-label={t.home}>
+                ←
+              </button>
+            </div>
+          )}
+          {update && view.name === "home" && (
+            <div className="updatebar">
+              <b>Muesli {update.version}</b> {t.updateAvailable}
+              <button
+                className="btn solid"
+                onClick={() =>
+                  update
+                    .downloadAndInstall()
+                    .then(relaunch)
+                    .catch(notify)
+                }
+              >
+                {t.installUpdate}
+              </button>
+              <button className="btn" onClick={() => setUpdate(null)}>
+                {t.later}
+              </button>
+            </div>
+          )}
+          {view.name === "home" && <Home footer={footer} />}
+          {view.name === "rec" && <RecordingView key={view.id} id={view.id} />}
           {view.name === "settings" && <SettingsView />}
         </main>
-
-        {toast && (
-          <div role="status" className="fixed bottom-5 left-1/2 max-w-[calc(100%-32px)] -translate-x-1/2 rounded-xs bg-fg px-4 py-2.5 font-bold text-bg shadow-lg" onClick={() => setToast(null)}>
-            {toast}
-          </div>
-        )}
       </div>
+      <audio
+        ref={audio}
+        preload="metadata"
+        onPlay={() => setPlayback((p) => p && { ...p, playing: true })}
+        onPause={() => {
+          setPlayback((p) => p && { ...p, playing: false });
+          setTime((audio.current?.currentTime ?? 0) * 1000);
+        }}
+        onSeeked={() => setTime((audio.current?.currentTime ?? 0) * 1000)}
+      />
+      {liveRec && !onLivePage && (
+        <Pip
+          t={t}
+          title={liveRec.title}
+          them={liveRec.them}
+          level={level}
+          paused={paused}
+          setPaused={setPaused}
+          onStop={stop}
+          onOpen={() => go({ name: "rec", id: liveRec.id })}
+          onMark={(body) => api.addNote(liveRec.id, level.ms, body).catch(notify)}
+        />
+      )}
+      {playRec && playback.pinned && !(view.name === "rec" && view.id === playback.id) && (
+        <PlayPip
+          t={t}
+          title={playRec.title}
+          them={playRec.them}
+          duration={playRec.durationMs}
+          time={time}
+          playing={playback.playing}
+          stacked={!!liveRec && !onLivePage}
+          onToggle={toggle}
+          onSeek={(ms) => seek(playRec.id, ms)}
+          onOpen={() => go({ name: "rec", id: playRec.id })}
+          onClose={() => {
+            audio.current?.pause();
+            setPlayback(null);
+          }}
+        />
+      )}
+      {picker && <Picker t={t} theme={theme} setTheme={setTheme} anchor={picker} sideHidden={view.name === "home"} onClose={() => setPicker(null)} />}
+      {tour !== null && (
+        <Tour lang={lang} setLang={setLang} step={tour} setStep={setTour} onEnd={endTour} actionDone={(a) => (a === "model" ? modelReady : perms?.microphone === "granted" && perms?.systemAudio === "granted")} />
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </Ctx.Provider>
   );
 }
