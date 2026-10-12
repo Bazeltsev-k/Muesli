@@ -24,7 +24,7 @@ impl Default for Settings {
             display_name: "Me".into(),
             other_name: "Them".into(),
             theme: "system".into(),
-            hotkey: "CommandOrControl+Shift+R".into(),
+            hotkey: "Control+Alt+R".into(),
             mic_device: None,
             capture_system: true,
             primary_lang: "en".into(),

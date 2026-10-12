@@ -58,9 +58,12 @@ pub fn decode(bin: &Path, audio: &Path, tmp: &Path) -> Result<[Vec<f32>; 2], Str
     )?;
     let bytes = std::fs::read(tmp).map_err(|e| e.to_string());
     let _ = std::fs::remove_file(tmp);
-    let samples: Vec<f32> = bytes?
-        .chunks_exact(4)
-        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    let bytes = bytes?;
+    let samples: Vec<f32> = bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| f32::from_le_bytes(*b))
         .collect();
     Ok([
         samples.iter().step_by(2).copied().collect(),
