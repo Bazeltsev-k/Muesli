@@ -51,7 +51,7 @@ export function TimedNotes({ id, notes, setNotes, now, onSeek }: { id: number; n
   );
 }
 
-export function GeneralNote({ id, initial }: { id: number; initial: string }) {
+export function GeneralNote({ id, initial, live }: { id: number; initial: string; live?: boolean }) {
   const [text, setText] = useState(initial);
   const saved = useRef(initial);
   const latest = useRef(text);
@@ -70,6 +70,17 @@ export function GeneralNote({ id, initial }: { id: number; initial: string }) {
     },
     [id],
   );
+
+  if (live)
+    return (
+      <textarea
+        autoFocus
+        className="min-h-[55vh] w-full resize-none bg-transparent text-[16px] leading-[1.75] text-fg outline-none placeholder:text-muted"
+        placeholder="Write notes while Muesli listens. The transcript appears when you stop."
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+    );
 
   return (
     <div className="flex flex-col gap-2">

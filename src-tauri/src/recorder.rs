@@ -43,7 +43,10 @@ pub fn spawn(dir: &Path, mic: Option<&str>, system: bool) -> std::io::Result<Chi
     if !system {
         cmd.arg("--no-system");
     }
-    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(std::fs::File::create(dir.join("recorder.log"))?)
+        .spawn()
 }
 
 pub fn send(stdin: &mut ChildStdin, command: &str) {

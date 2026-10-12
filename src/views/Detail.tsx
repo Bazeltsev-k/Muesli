@@ -10,10 +10,10 @@ import { TagEditor } from "../components/TagEditor";
 import { Player } from "../components/Player";
 import { Transcript } from "../components/Transcript";
 import { GeneralNote, TimedNotes } from "../components/Notes";
-import { LivePanel } from "../components/LivePanel";
+import { RecordingPill } from "../components/LivePanel";
 
 export function Detail({ id }: { id: number }) {
-  const { settings, activeId, level, go, notify } = useApp();
+  const { settings, activeId, go, notify } = useApp();
   const [rec, setRec] = useState<Recording | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -127,9 +127,17 @@ export function Detail({ id }: { id: number }) {
         {live ? (
           activeId === id ? (
             <>
-              <LivePanel />
-              <TimedNotes id={id} notes={notes} setNotes={setNotes} now={() => level.ms} />
-              <GeneralNote id={id} initial={rec.note} />
+              {notes.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {notes.map((n) => (
+                    <span key={n.id} className="chip text-fg2">
+                      <b className="text-accent tabular-nums">{formatTime(n.atMs)}</b> {n.body}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <GeneralNote id={id} initial={rec.note} live />
+              <RecordingPill id={id} onNote={(n) => setNotes([...notes, n])} />
             </>
           ) : (
             <p className="text-muted">Finishing the recording…</p>

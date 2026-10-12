@@ -9,7 +9,12 @@ func emit(_ obj: [String: Any]) {
     print(String(data: data, encoding: .utf8)!)
 }
 
+func log(_ message: String) {
+    FileHandle.standardError.write("\(Date()) \(message)\n".data(using: .utf8)!)
+}
+
 func fail(_ message: String) -> Never {
+    log("error: \(message)")
     emit(["type": "error", "message": message])
     exit(1)
 }
@@ -118,6 +123,7 @@ final class Recorder {
     var micSum: Float = 0
     var sysSum: Float = 0
     var levelFrames = 0
+    var callbacks = 0
 
     init(dir: URL, micUID: String?, system: Bool) {
         self.dir = dir
@@ -142,7 +148,7 @@ final class Recorder {
             tap.isPrivate = true
             tap.name = "Muesli System Audio"
             check(AudioHardwareCreateProcessTap(tap, &tapID), "Creating system audio tap")
-            desc[kAudioAggregateDeviceTapAutoStartKey] = true
+            desc[kAudioAggregateDeviceTapAutoStartKey] = false
             desc[kAudioAggregateDeviceTapListKey] = [[kAudioSubTapUIDKey: tap.uuid.uuidString, kAudioSubTapDriftCompensationKey: true]]
         }
         check(AudioHardwareCreateAggregateDevice(desc as CFDictionary, &aggID), "Creating aggregate device")
@@ -150,12 +156,17 @@ final class Recorder {
         var addr = address(kAudioDevicePropertyNominalSampleRate)
         var size = UInt32(MemoryLayout<Double>.size)
         AudioObjectGetPropertyData(aggID, &addr, 0, nil, &size, &rate)
+        log("mic=\(mic) system=\(system) aggregate=\(aggID) tap=\(tapID) rate=\(rate) inputStreams=\(inputChannels(aggID))")
         let meta = try! JSONSerialization.data(withJSONObject: ["rate": rate])
         try! meta.write(to: dir.appendingPathComponent("raw.json"))
 
         let hasTap = system
         check(AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, queue) { [unowned self] _, input, _, _, _ in
             let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
+            callbacks += 1
+            if callbacks <= 3 {
+                log("callback \(callbacks): " + buffers.map { "\($0.mNumberChannels)ch \($0.mDataByteSize)B data=\($0.mData != nil)" }.joined(separator: ", "))
+            }
             guard !paused, let micBuf = buffers.first, let micData = micBuf.mData else { return }
             let micStride = Int(max(micBuf.mNumberChannels, 1))
             let count = Int(micBuf.mDataByteSize) / (4 * micStride)
@@ -186,6 +197,11 @@ final class Recorder {
             }
         }, "Creating IO proc")
         check(AudioDeviceStart(aggID, procID), "Starting audio device")
+        var running: UInt32 = 0
+        var runningAddr = address(kAudioDevicePropertyDeviceIsRunning)
+        var runningSize = UInt32(MemoryLayout<UInt32>.size)
+        AudioObjectGetPropertyData(aggID, &runningAddr, 0, nil, &runningSize, &running)
+        log("started running=\(running)")
         emit(["type": "started", "rate": rate])
     }
 
@@ -196,6 +212,7 @@ final class Recorder {
     func stop() {
         AudioDeviceStop(aggID, procID)
         queue.sync {}
+        log("stopped callbacks=\(callbacks) frames=\(frames)")
         if let procID { AudioDeviceDestroyIOProcID(aggID, procID) }
         AudioHardwareDestroyAggregateDevice(aggID)
         if tapID != kAudioObjectUnknown { AudioHardwareDestroyProcessTap(tapID) }
@@ -260,16 +277,24 @@ func finalize(_ dir: URL) {
     emit(["type": "done", "ms": Int(Double(file.length) * 1000 / file.fileFormat.sampleRate)])
 }
 
-func record(_ dir: URL, micUID: String?, system: Bool) {
+func record(_ dir: URL, micUID: String?, system: Bool) -> Never {
+    var noRunLoop: CFRunLoop?
+    var runLoopAddr = address(kAudioHardwarePropertyRunLoop)
+    AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &runLoopAddr, 0, nil, UInt32(MemoryLayout<CFRunLoop?>.size), &noRunLoop)
     let recorder = Recorder(dir: dir, micUID: micUID, system: system)
-    while let line = readLine() {
-        let command = line.trimmingCharacters(in: .whitespaces)
-        if command == "pause" { recorder.setPaused(true) }
-        if command == "resume" { recorder.setPaused(false) }
-        if command == "stop" { break }
+    Thread.detachNewThread {
+        while let line = readLine() {
+            let command = line.trimmingCharacters(in: .whitespaces)
+            if command == "pause" { recorder.setPaused(true) }
+            if command == "resume" { recorder.setPaused(false) }
+            if command == "stop" { break }
+        }
+        recorder.stop()
+        finalize(dir)
+        exit(0)
     }
-    recorder.stop()
-    finalize(dir)
+    RunLoop.main.run()
+    exit(0)
 }
 
 func decode(_ input: URL, _ output: URL) {

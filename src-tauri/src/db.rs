@@ -147,7 +147,8 @@ pub fn list_recordings(
         "{SELECT_RECORDING}
         WHERE (?1 = '%%' OR r.title LIKE ?1 OR r.note LIKE ?1
           OR EXISTS (SELECT 1 FROM segments s WHERE s.recording_id = r.id AND s.text LIKE ?1)
-          OR EXISTS (SELECT 1 FROM notes n WHERE n.recording_id = r.id AND n.body LIKE ?1))
+          OR EXISTS (SELECT 1 FROM notes n WHERE n.recording_id = r.id AND n.body LIKE ?1)
+          OR EXISTS (SELECT 1 FROM recording_tags rt JOIN tags t ON t.id = rt.tag_id WHERE rt.recording_id = r.id AND t.name LIKE ?1))
         AND (?2 IS NULL OR EXISTS (SELECT 1 FROM recording_tags rt JOIN tags t ON t.id = rt.tag_id
           WHERE rt.recording_id = r.id AND t.name = ?2))
         ORDER BY r.created_at DESC"
@@ -337,6 +338,14 @@ mod tests {
         );
         assert_eq!(list_recordings(&conn, "світ", None).unwrap()[0].id, b);
         assert_eq!(list_recordings(&conn, "budget", None).unwrap()[0].id, a);
+        assert_eq!(
+            list_recordings(&conn, "tea", None)
+                .unwrap()
+                .iter()
+                .map(|r| r.id)
+                .collect::<Vec<_>>(),
+            vec![a]
+        );
         assert_eq!(list_recordings(&conn, "", Some("team")).unwrap().len(), 1);
         assert_eq!(get_segments(&conn, b).unwrap()[0].text(), "Привіт світ");
 

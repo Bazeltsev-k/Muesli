@@ -1,40 +1,55 @@
+import { useState } from "react";
 import { useApp } from "../lib/context";
-import { api } from "../lib/api";
+import { api, type Note } from "../lib/api";
 import { formatTime } from "../lib/format";
 
-function Meter({ label, value, color }: { label: string; value: number; color: string }) {
+const SHAPE = [0.55, 0.9, 1, 0.7, 0.45];
+
+function Bars({ value, color, label }: { value: number; color: string; label: string }) {
+  const height = Math.min(1, Math.sqrt(value) * 4);
   return (
-    <div className="grid grid-cols-[110px_1fr] items-center gap-3">
-      <span className="truncate text-[13px] font-bold">{label}</span>
-      <div className="h-2 bg-raised">
-        <div className={`h-full ${color} transition-[width] duration-100`} style={{ width: `${Math.min(100, Math.sqrt(value) * 220)}%` }} />
-      </div>
+    <div className="flex h-5 items-center gap-[2px]" title={label} aria-label={`${label} level`}>
+      {SHAPE.map((k, i) => (
+        <span key={i} className={`w-[3px] ${color} transition-[height] duration-100`} style={{ height: `${Math.max(3, height * k * 20)}px` }} />
+      ))}
     </div>
   );
 }
 
-export function LivePanel() {
-  const { level, paused, setPaused, settings } = useApp();
+export function RecordingPill({ id, onNote }: { id: number; onNote: (note: Note) => void }) {
+  const { level, paused, setPaused, settings, notify } = useApp();
+  const [body, setBody] = useState("");
+
+  const mark = async () => {
+    if (!body.trim()) return;
+    try {
+      onNote(await api.addNote(id, level.ms, body));
+      setBody("");
+    } catch (e) {
+      notify(e);
+    }
+  };
+
   return (
-    <div className="panel flex flex-col items-center gap-6 px-8 py-10">
-      <div className="flex items-center gap-2">
-        <span className={`size-2.5 rounded-full bg-accent ${paused ? "" : "animate-pulse"}`} />
-        <span className="cap">{paused ? "Paused" : "Recording"}</span>
-      </div>
-      <div className="text-[64px] leading-none font-bold tracking-[-2px] tabular-nums">{formatTime(level.ms)}</div>
-      <div className="flex w-full max-w-[460px] flex-col gap-3">
-        <Meter label={settings.displayName} value={level.mic} color="bg-me" />
-        {settings.captureSystem && <Meter label={settings.otherName} value={level.sys} color="bg-them" />}
-      </div>
-      <div className="flex gap-2">
-        <button className="btn" onClick={() => setPaused(!paused)}>
-          {paused ? "Resume" : "Pause"}
-        </button>
-        <button className="btn btn-rec" onClick={() => api.stopRecording()}>
-          <span className="size-2.5 bg-white" />
-          Stop recording
-        </button>
-      </div>
+    <div className="fixed bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-[3px] border-[1.5px] border-fg bg-panel py-2 pr-2 pl-4 shadow-[0_18px_40px_-16px_rgba(0,0,0,0.55)]">
+      <span className={`size-2.5 rounded-full bg-accent ${paused ? "" : "animate-pulse"}`} />
+      <span className="w-[54px] font-bold tabular-nums">{formatTime(level.ms)}</span>
+      <Bars value={paused ? 0 : level.mic} color="bg-me" label={settings.displayName} />
+      {settings.captureSystem && <Bars value={paused ? 0 : level.sys} color="bg-them" label={settings.otherName} />}
+      <input
+        className="field h-8 w-[220px]"
+        placeholder={`Mark ${formatTime(level.ms)} — press Enter`}
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && mark()}
+      />
+      <button className="btn" onClick={() => setPaused(!paused)}>
+        {paused ? "Resume" : "Pause"}
+      </button>
+      <button className="btn btn-rec" onClick={() => api.stopRecording()}>
+        <span className="size-2.5 bg-white" />
+        Stop
+      </button>
     </div>
   );
 }
