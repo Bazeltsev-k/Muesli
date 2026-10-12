@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Local-first meeting recorder and transcriber"
 authors = ["Kirill Bazeltsev"]
 edition = "2024"
+license = "MIT"
 
 [lib]
 name = "muesli_lib"
