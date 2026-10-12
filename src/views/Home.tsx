@@ -4,6 +4,7 @@ import type { Recording } from "../lib/api";
 import { api } from "../lib/api";
 import { fmt, fmtDate } from "../lib/util";
 import { HoldDelete, Icon, TagPicker } from "../components/Controls";
+import { prettyHotkey } from "./Settings";
 
 export function TagFilters() {
   const { t, tags, tagFilter, setTagFilter } = useApp();
@@ -141,7 +142,7 @@ export function Home({ footer }: { footer: React.ReactNode }) {
           <i />
           {t.newRec}
           <span className="kbd" style={{ color: "#fff", opacity: 0.7 }}>
-            ⌃⌥R
+            {prettyHotkey(useApp().settings.hotkey)}
           </span>
         </button>
       </div>

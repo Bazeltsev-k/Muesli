@@ -25,7 +25,7 @@ impl Default for Settings {
             display_name: "Me".into(),
             other_name: String::new(),
             theme: "system".into(),
-            hotkey: "Control+Alt+R".into(),
+            hotkey: "CommandOrControl+Shift+R".into(),
             mic_device: None,
             capture_system: true,
             languages: vec!["en".into(), "uk".into(), "ru".into()],

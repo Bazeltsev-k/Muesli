@@ -28,7 +28,7 @@ It was built for people who switch between English, Ukrainian and Russian in the
 
 **Recording**
 - Your voice and the other side (Zoom, Meet, Teams, anything) recorded on separate channels
-- Start from the app, the menu bar or a global hotkey (default `⌃⌥R`)
+- Start from the app, the menu bar or a global hotkey (default `⌘⇧R`)
 - Name the recording, set who you're talking with and which languages to expect before pressing Start
 - Write notes while you record and mark moments with a timestamp
 - Keep browsing while recording; a floating panel keeps the timer, levels, marks and Stop at hand

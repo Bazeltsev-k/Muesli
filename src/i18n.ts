@@ -10,7 +10,7 @@ export type Strings = (typeof T)["en"];
 
 export const TOUR = {
   en: { waiting: "Waiting for you…", skip: "Skip", next: "Next", back: "Back", done: "Finish", end: "End tour", row: "Product tour", rowHint: "Walk through Muesli's main features again.", start: "Start tour", steps: [
-    ["Start a recording", "Opens a draft first, so you can name it and set who you're talking to. Nothing records until you press Start. Shortcut: ⌃⌥R."],
+    ["Start a recording", "Opens a draft first, so you can name it and set who you're talking to. Nothing records until you press Start. Shortcut: {hotkey}."],
     ["Find anything", "Search titles, people, notes and transcripts, or filter by tag."],
     ["Your recordings", "Click a name to rename it. Hover a row to tag it or hold to delete. These two demos are yours to delete."],
     ["Who and which languages", "Set who you're talking with and which languages to expect. Each utterance is matched to one of the checked languages."],
@@ -22,7 +22,7 @@ export const TOUR = {
     ["Allow microphone and system audio", "Click Allow on both, so Muesli hears you and the other side. You can restart this tour from Settings any time."],
   ] },
   uk: { waiting: "Чекаємо на вас…", skip: "Пропустити", next: "Далі", back: "Назад", done: "Готово", end: "Завершити тур", row: "Тур застосунком", rowHint: "Ще раз переглянути основні можливості Muesli.", start: "Почати тур", steps: [
-    ["Почніть запис", "Спершу відкривається чернетка: дайте назву й вкажіть співрозмовника. Запис почнеться лише після «Почати». Гаряча клавіша: ⌃⌥R."],
+    ["Почніть запис", "Спершу відкривається чернетка: дайте назву й вкажіть співрозмовника. Запис почнеться лише після «Почати». Гаряча клавіша: {hotkey}."],
     ["Знайдіть будь-що", "Шукайте за назвами, людьми, нотатками й транскриптами або фільтруйте за тегами."],
     ["Ваші записи", "Натисніть на назву, щоб перейменувати. Наведіть на рядок, щоб додати тег або утримуйте для видалення. Ці два демо можна видалити."],
     ["Хто й якими мовами", "Вкажіть співрозмовника й мови. Кожну репліку зіставляють з однією з позначених мов."],
@@ -34,7 +34,7 @@ export const TOUR = {
     ["Дозвольте мікрофон і системний звук", "Натисніть «Дозволити» для обох, щоб Muesli чув вас і співрозмовника. Тур можна перезапустити в налаштуваннях."],
   ] },
   ru: { waiting: "Ждём вас…", skip: "Пропустить", next: "Далее", back: "Назад", done: "Готово", end: "Завершить тур", row: "Тур по приложению", rowHint: "Ещё раз посмотреть основные возможности Muesli.", start: "Начать тур", steps: [
-    ["Начните запись", "Сначала открывается черновик: дайте название и укажите собеседника. Запись начнётся только после «Начать». Горячая клавиша: ⌃⌥R."],
+    ["Начните запись", "Сначала открывается черновик: дайте название и укажите собеседника. Запись начнётся только после «Начать». Горячая клавиша: {hotkey}."],
     ["Найдите что угодно", "Ищите по названиям, людям, заметкам и транскриптам или фильтруйте по тегам."],
     ["Ваши записи", "Нажмите на название, чтобы переименовать. Наведите на строку, чтобы добавить тег, или удерживайте для удаления. Эти два демо можно удалить."],
     ["Кто и на каких языках", "Укажите собеседника и языки. Каждая реплика сопоставляется с одним из отмеченных языков."],

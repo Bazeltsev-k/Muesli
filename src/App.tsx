@@ -13,7 +13,7 @@ import { Pip, PlayPip } from "./components/Floating";
 import { Tour } from "./components/Tour";
 import { Home, Notch, RecMeta, TagFilters, groupByDay } from "./views/Home";
 import { RecordingView } from "./views/Recording";
-import { SECTIONS, SettingsView } from "./views/Settings";
+import { SECTIONS, SettingsView, prettyHotkey } from "./views/Settings";
 
 const DEFAULT_THEME: Theme = { h: 8, c: 62, bh: 8, bc: 30, grain: 0.5, bgrain: 0.3, depth: 0.25, lift: 0.1, mode: "auto" };
 
@@ -355,7 +355,7 @@ function Shell({ initial }: { initial: Settings }) {
                 <button className="newrec" onClick={newRecording}>
                   <i className="dot" />
                   {t.newRec}
-                  <span className="kbd">⌃⌥R</span>
+                  <span className="kbd">{prettyHotkey(settings.hotkey)}</span>
                 </button>
                 <label className="search">
                   {Icon.search}
@@ -459,7 +459,7 @@ function Shell({ initial }: { initial: Settings }) {
       )}
       {picker && <Picker t={t} theme={theme} setTheme={setTheme} anchor={picker} sideHidden={view.name === "home"} onClose={() => setPicker(null)} />}
       {tour !== null && (
-        <Tour lang={lang} setLang={setLang} step={tour} setStep={setTour} onEnd={endTour} actionDone={(a) => (a === "model" ? modelReady : perms?.microphone === "granted" && perms?.systemAudio === "granted")} />
+        <Tour hotkey={prettyHotkey(settings.hotkey)} lang={lang} setLang={setLang} step={tour} setStep={setTour} onEnd={endTour} actionDone={(a) => (a === "model" ? modelReady : perms?.microphone === "granted" && perms?.systemAudio === "granted")} />
       )}
       {toast && (
         <div className="toast" role="status">

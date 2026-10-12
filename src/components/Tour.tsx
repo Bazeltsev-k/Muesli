@@ -3,7 +3,7 @@ import { TOUR, TOUR_STEPS, type Lang } from "../i18n";
 
 type Box = { top: number; left: number; width: number; height: number };
 
-export function Tour({ lang, setLang, step, setStep, onEnd, actionDone }: { lang: Lang; setLang: (l: Lang) => void; step: number; setStep: (s: number) => void; onEnd: () => void; actionDone: (a: "model" | "perms") => boolean }) {
+export function Tour({ hotkey, lang, setLang, step, setStep, onEnd, actionDone }: { hotkey: string; lang: Lang; setLang: (l: Lang) => void; step: number; setStep: (s: number) => void; onEnd: () => void; actionDone: (a: "model" | "perms") => boolean }) {
   const tt = TOUR[lang];
   const [box, setBox] = useState<Box | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -45,7 +45,8 @@ export function Tour({ lang, setLang, step, setStep, onEnd, actionDone }: { lang
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   });
-  const [title, body] = tt.steps[step];
+  const [title, rawBody] = tt.steps[step];
+  const body = rawBody.replace("{hotkey}", hotkey);
   const action = TOUR_STEPS[step].action;
   const done = !action || actionDone(action);
   const pad = 8;
