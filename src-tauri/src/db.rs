@@ -48,6 +48,7 @@ pub struct Recording {
     pub error: Option<String>,
     pub note: String,
     pub tags: Vec<String>,
+    pub languages: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -94,16 +95,23 @@ pub fn open(path: &Path) -> Result<Connection> {
         conn.execute_batch(SCHEMA)?;
         conn.pragma_update(None, "user_version", 1)?;
     }
+    if version < 2 {
+        conn.execute_batch(
+            "ALTER TABLE recordings ADD COLUMN languages TEXT NOT NULL DEFAULT 'en,uk,ru'",
+        )?;
+        conn.pragma_update(None, "user_version", 2)?;
+    }
     Ok(conn)
 }
 
 const SELECT_RECORDING: &str = "
-SELECT r.id, r.title, r.created_at, r.duration_ms, r.status, r.error, r.note,
+SELECT r.id, r.title, r.created_at, r.duration_ms, r.status, r.error, r.note, r.languages,
   (SELECT group_concat(t.name, char(31)) FROM recording_tags rt JOIN tags t ON t.id = rt.tag_id WHERE rt.recording_id = r.id)
 FROM recordings r";
 
 fn row_to_recording(row: &rusqlite::Row) -> Result<Recording> {
-    let tags: Option<String> = row.get(7)?;
+    let tags: Option<String> = row.get(8)?;
+    let languages: String = row.get(7)?;
     let mut tags: Vec<String> = tags
         .map(|t| t.split('\u{1f}').map(String::from).collect())
         .unwrap_or_default();
@@ -117,15 +125,33 @@ fn row_to_recording(row: &rusqlite::Row) -> Result<Recording> {
         error: row.get(5)?,
         note: row.get(6)?,
         tags,
+        languages: languages
+            .split(',')
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect(),
     })
 }
 
-pub fn create_recording(conn: &Connection, title: &str, created_at: i64) -> Result<i64> {
+pub fn create_recording(
+    conn: &Connection,
+    title: &str,
+    created_at: i64,
+    languages: &[String],
+) -> Result<i64> {
     conn.execute(
-        "INSERT INTO recordings (title, created_at, status) VALUES (?1, ?2, 'recording')",
-        params![title, created_at],
+        "INSERT INTO recordings (title, created_at, status, languages) VALUES (?1, ?2, 'recording', ?3)",
+        params![title, created_at, languages.join(",")],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+pub fn set_languages(conn: &Connection, id: i64, languages: &[String]) -> Result<()> {
+    conn.execute(
+        "UPDATE recordings SET languages = ?2 WHERE id = ?1",
+        params![id, languages.join(",")],
+    )?;
+    Ok(())
 }
 
 pub fn get_recording(conn: &Connection, id: i64) -> Result<Option<Recording>> {
@@ -306,8 +332,18 @@ mod tests {
     fn recordings_roundtrip_search_tags_and_cascade() {
         let dir = tempfile::tempdir().unwrap();
         let mut conn = open(&dir.path().join("t.db")).unwrap();
-        let a = create_recording(&conn, "Weekly sync", 1).unwrap();
-        let b = create_recording(&conn, "1:1", 2).unwrap();
+        let langs = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let a = create_recording(&conn, "Weekly sync", 1, &langs(&["en", "uk", "ru"])).unwrap();
+        let b = create_recording(&conn, "1:1", 2, &langs(&["uk"])).unwrap();
+        set_languages(&conn, a, &langs(&["en", "ru"])).unwrap();
+        assert_eq!(
+            get_recording(&conn, a).unwrap().unwrap().languages,
+            langs(&["en", "ru"])
+        );
+        assert_eq!(
+            get_recording(&conn, b).unwrap().unwrap().languages,
+            langs(&["uk"])
+        );
         set_tags(&mut conn, a, &["work".into(), " Team ".into(), "".into()]).unwrap();
         set_tags(&mut conn, b, &["work".into()]).unwrap();
         replace_segments(

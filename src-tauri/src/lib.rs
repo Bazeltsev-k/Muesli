@@ -148,8 +148,13 @@ fn begin(app: &AppHandle) -> Res<()> {
         );
     }
 
-    let id =
-        db::create_recording(&state.db.lock().unwrap(), "New recording", now_ms()).map_err(err)?;
+    let id = db::create_recording(
+        &state.db.lock().unwrap(),
+        "New recording",
+        now_ms(),
+        &settings.languages,
+    )
+    .map_err(err)?;
     let dir = state.recording_dir(id);
     let spawned = std::fs::create_dir_all(&dir)
         .and_then(|_| recorder::spawn(&dir, settings.mic_device.as_deref(), system));
@@ -229,7 +234,12 @@ fn worker(app: AppHandle, jobs: mpsc::Receiver<i64>) {
         let state = app.state::<AppState>();
         let _ = db::set_status(&state.db.lock().unwrap(), id, "transcribing", None);
         changed(&app);
-        let settings = state.settings.lock().unwrap().clone();
+        let vocabulary = state.settings.lock().unwrap().vocabulary.clone();
+        let languages = db::get_recording(&state.db.lock().unwrap(), id)
+            .ok()
+            .flatten()
+            .map(|r| r.languages)
+            .unwrap_or_default();
         let dir = state.recording_dir(id);
         let result = recorder::decode(
             &recorder::binary(),
@@ -237,9 +247,15 @@ fn worker(app: AppHandle, jobs: mpsc::Receiver<i64>) {
             &dir.join("decoded.f32"),
         )
         .and_then(|channels| {
-            transcribe::transcribe(&state.model_path(), &channels, &settings, |p| {
-                let _ = app.emit("transcribe-progress", (id, p));
-            })
+            transcribe::transcribe(
+                &state.model_path(),
+                &channels,
+                &languages,
+                &vocabulary,
+                |p| {
+                    let _ = app.emit("transcribe-progress", (id, p));
+                },
+            )
         });
         let mut db = state.db.lock().unwrap();
         let _ = match result {
@@ -302,6 +318,21 @@ fn update_note(state: State<AppState>, id: i64, note: String) -> Res<()> {
 #[tauri::command]
 fn set_tags(app: AppHandle, state: State<AppState>, id: i64, tags: Vec<String>) -> Res<()> {
     db::set_tags(&mut state.db.lock().unwrap(), id, &tags).map_err(err)?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_languages(
+    app: AppHandle,
+    state: State<AppState>,
+    id: i64,
+    languages: Vec<String>,
+) -> Res<()> {
+    if languages.is_empty() {
+        return Err("Pick at least one language".into());
+    }
+    db::set_languages(&state.db.lock().unwrap(), id, &languages).map_err(err)?;
     changed(&app);
     Ok(())
 }
@@ -574,6 +605,7 @@ pub fn run() {
             update_title,
             update_note,
             set_tags,
+            set_languages,
             all_tags,
             add_note,
             delete_note,

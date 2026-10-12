@@ -11,6 +11,7 @@ export type Recording = {
   error: string | null;
   note: string;
   tags: string[];
+  languages: string[];
 };
 
 export type Word = { startMs: number; text: string };
@@ -26,8 +27,7 @@ export type Settings = {
   hotkey: string;
   micDevice: string | null;
   captureSystem: boolean;
-  primaryLang: string;
-  secondaryLang: string | null;
+  languages: string[];
   autoTranscribe: boolean;
   vocabulary: string;
   exportTimestamps: boolean;
@@ -49,6 +49,7 @@ export const api = {
   updateTitle: (id: number, title: string) => invoke<void>("update_title", { id, title }),
   updateNote: (id: number, note: string) => invoke<void>("update_note", { id, note }),
   setTags: (id: number, tags: string[]) => invoke<void>("set_tags", { id, tags }),
+  setLanguages: (id: number, languages: string[]) => invoke<void>("set_languages", { id, languages }),
   allTags: () => invoke<string[]>("all_tags"),
   addNote: (id: number, atMs: number, body: string) => invoke<Note>("add_note", { id, atMs, body }),
   deleteNote: (noteId: number) => invoke<void>("delete_note", { noteId }),

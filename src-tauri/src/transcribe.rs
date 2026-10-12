@@ -1,5 +1,4 @@
 use crate::db::{Segment, Word};
-use crate::settings::Settings;
 use std::path::Path;
 use whisper_rs::{
     DtwMode, DtwModelPreset, DtwParameters, FullParams, SamplingStrategy, WhisperContext,
@@ -14,6 +13,17 @@ const MIN_VOICED: usize = 300 / 30;
 const PAD: usize = 200 / 30;
 const DETECT_CTX: i32 = 500;
 const DETECT_MIN: usize = RATE * 3 / 2;
+const PROMPTS: [(&str, &str); 3] = [
+    (
+        "en",
+        "Hi everyone, thanks for joining. Okay, let's get started.",
+    ),
+    ("uk", "Привіт усім, дякую, що доєдналися. Добре, почнімо."),
+    (
+        "ru",
+        "Привет всем, спасибо, что присоединились. Хорошо, давайте начнём.",
+    ),
+];
 const PACK_MAX: usize = RATE * 28;
 const PACK_GAP: usize = RATE * 3 / 10;
 
@@ -126,7 +136,8 @@ pub fn to_original(pieces: &[Piece], packed_ms: i64) -> (usize, i64) {
 pub fn transcribe(
     model: &Path,
     channels: &[Vec<f32>; 2],
-    settings: &Settings,
+    languages: &[String],
+    vocabulary: &str,
     mut progress: impl FnMut(f32),
 ) -> Result<Vec<Segment>, String> {
     let mut params = WhisperContextParameters::default();
@@ -143,26 +154,31 @@ pub fn transcribe(
         .unwrap_or(4);
     let eot = ctx.token_eot();
 
-    let primary = settings.primary_lang.as_str();
-    let secondary = settings.secondary_lang.as_deref().filter(|s| *s != primary);
-    let mut detector = match secondary {
-        Some(_) => {
+    let languages: Vec<&str> = match languages.len() {
+        0 => vec!["en"],
+        _ => languages.iter().map(String::as_str).collect(),
+    };
+    let mut detector = match languages.len() {
+        1 => None,
+        _ => {
             let mut detector = ctx.create_state().map_err(|e| e.to_string())?;
             detector
-                .full(params_for(primary, threads, DETECT_CTX), &vec![0.0; RATE])
+                .full(
+                    params_for(languages[0], threads, DETECT_CTX),
+                    &vec![0.0; RATE],
+                )
                 .map_err(|e| e.to_string())?;
             Some(detector)
         }
-        None => None,
     };
 
     let mut jobs: Vec<(usize, &str, Vec<Piece>)> = vec![];
     for (speaker, samples) in channels.iter().enumerate() {
-        let mut last = primary;
+        let mut last = languages[0];
         let mut runs: Vec<(&str, Vec<(usize, usize)>)> = vec![];
         for (a, b) in speech_windows(samples) {
-            let lang = match (secondary, detector.as_mut()) {
-                (Some(secondary), Some(detector)) if b - a >= DETECT_MIN => {
+            let lang = match detector.as_mut() {
+                Some(detector) if b - a >= DETECT_MIN => {
                     detector
                         .pcm_to_mel(&samples[a..b.min(a + RATE * 10)], threads)
                         .map_err(|e| e.to_string())?;
@@ -170,11 +186,11 @@ pub fn transcribe(
                         .lang_detect(0, threads)
                         .map_err(|e| e.to_string())?;
                     let p = |l: &str| get_lang_id(l).map(|i| probs[i as usize]).unwrap_or(0.0);
-                    if p(secondary) > p(primary) {
-                        secondary
-                    } else {
-                        primary
-                    }
+                    languages
+                        .iter()
+                        .copied()
+                        .max_by(|a, b| p(a).total_cmp(&p(b)))
+                        .unwrap()
                 }
                 _ => last,
             };
@@ -210,9 +226,16 @@ pub fn transcribe(
         }
 
         let mut full = params_for(lang, threads, 0);
-        if !settings.vocabulary.trim().is_empty() {
-            full.set_initial_prompt(settings.vocabulary.trim());
-        }
+        let prompt = format!(
+            "{} {}",
+            PROMPTS
+                .iter()
+                .find(|(l, _)| *l == lang)
+                .map(|(_, p)| *p)
+                .unwrap_or(""),
+            vocabulary.trim()
+        );
+        full.set_initial_prompt(prompt.trim());
         state.full(full, &pcm).map_err(|e| e.to_string())?;
 
         for seg in state.as_iter() {

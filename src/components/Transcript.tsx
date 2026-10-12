@@ -5,8 +5,11 @@ import { turns } from "../lib/transcript";
 
 export function Transcript({ segments, names, audio }: { segments: Segment[]; names: [string, string]; audio: RefObject<HTMLAudioElement | null> }) {
   const list = useMemo(() => turns(segments), [segments]);
-  const offsets = useMemo(() => list.reduce<number[]>((acc, _, i) => [...acc, i === 0 ? 0 : acc[i - 1] + list[i - 1].words.length], []), [list]);
-  const starts = useMemo(() => list.flatMap((t) => t.words.map((w) => w.startMs)), [list]);
+  const paragraphs = useMemo(() => {
+    let index = 0;
+    return list.map((t) => t.paragraphs.map((p) => p.map((w) => ({ ...w, i: index++ }))));
+  }, [list]);
+  const starts = useMemo(() => list.flatMap((t) => t.paragraphs.flat().map((w) => w.startMs)), [list]);
   const root = useRef<HTMLDivElement>(null);
   const [follow, setFollow] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -63,15 +66,19 @@ export function Transcript({ segments, names, audio }: { segments: Segment[]; na
               {formatTime(turn.startMs)}
             </button>
           </div>
-          <p className="selectable text-[15px] leading-[1.8] text-fg2">
-            {turn.words.map((w, wi) => (
-              <Fragment key={wi}>
-                <span data-i={offsets[ti] + wi} className="word" onClick={() => seek(w.startMs)}>
-                  {w.text}
-                </span>{" "}
-              </Fragment>
+          <div className="selectable flex flex-col gap-2.5 text-[15px] leading-[1.8] text-fg2">
+            {paragraphs[ti].map((p, pi) => (
+              <p key={pi}>
+                {p.map((w) => (
+                  <Fragment key={w.i}>
+                    <span data-i={w.i} className="word" onClick={() => seek(w.startMs)}>
+                      {w.text}
+                    </span>{" "}
+                  </Fragment>
+                ))}
+              </p>
             ))}
-          </p>
+          </div>
         </div>
       ))}
       {!follow && playing && (

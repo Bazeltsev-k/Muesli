@@ -3,7 +3,8 @@ import { getVersion } from "@tauri-apps/api/app";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { api, LANGUAGES, type Device, type Permission, type Permissions, type Settings } from "../lib/api";
+import { LanguagePicker } from "../components/LanguagePicker";
+import { api, type Device, type Permission, type Permissions, type Settings } from "../lib/api";
 import { useApp, useTauriEvent } from "../lib/context";
 import { prettyHotkey } from "../lib/format";
 
@@ -164,21 +165,6 @@ function RecordingTab() {
   );
 }
 
-function LanguageSelect({ value, onChange, allowNone, exclude }: { value: string | null; onChange: (v: string | null) => void; allowNone?: boolean; exclude?: string }) {
-  return (
-    <select className="field" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
-      {allowNone && <option value="">None</option>}
-      {Object.entries(LANGUAGES)
-        .filter(([code]) => code !== exclude)
-        .map(([code, name]) => (
-          <option key={code} value={code}>
-            {name}
-          </option>
-        ))}
-    </select>
-  );
-}
-
 function Transcription() {
   const { settings, updateSettings, notify } = useApp();
   const [installed, setInstalled] = useState<boolean | null>(null);
@@ -240,14 +226,8 @@ function Transcription() {
         </Row>
       </div>
       <div className="panel">
-        <Row label="Primary language">
-          <LanguageSelect
-            value={settings.primaryLang}
-            onChange={(v) => v && update({ primaryLang: v, secondaryLang: settings.secondaryLang === v ? null : settings.secondaryLang })}
-          />
-        </Row>
-        <Row label="Secondary language" hint="Each utterance is matched to one of the two. None is faster.">
-          <LanguageSelect allowNone value={settings.secondaryLang} exclude={settings.primaryLang} onChange={(secondaryLang) => update({ secondaryLang })} />
+        <Row label="Languages" hint="Default for new recordings, changeable per recording. Each utterance is matched to one of them; a single language is fastest.">
+          <LanguagePicker value={settings.languages} onChange={(languages) => update({ languages })} />
         </Row>
         <Row label="Transcribe automatically" hint="Start transcribing as soon as a recording stops.">
           <Toggle label="Transcribe automatically" checked={settings.autoTranscribe} onChange={(autoTranscribe) => update({ autoTranscribe })} />

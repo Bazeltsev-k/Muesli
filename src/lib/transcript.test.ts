@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { transcriptText } from "./transcript";
+import { transcriptText, turns } from "./transcript";
 import { activeIndex, formatTime } from "./format";
 import type { Recording, Segment } from "./api";
 
@@ -22,6 +22,11 @@ describe("transcript", () => {
       "[1:05] Them: Привіт",
       "",
     ]);
+  });
+
+  it("starts a new paragraph after a long pause within a turn", () => {
+    const t = turns([seg(0, 0, "One two"), seg(0, 1500, "three"), seg(0, 9000, "four"), seg(1, 9500, "five")]);
+    expect(t.map((x) => x.paragraphs.map((p) => p.map((w) => w.text).join(" ")))).toEqual([["One two three", "four"], ["five"]]);
   });
 
   it("finds the word being spoken", () => {

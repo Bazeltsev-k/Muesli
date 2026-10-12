@@ -1,4 +1,4 @@
-use muesli_lib::{model, recorder, settings::Settings, transcribe};
+use muesli_lib::{model, recorder, transcribe};
 use std::path::{Path, PathBuf};
 
 fn model_path() -> PathBuf {
@@ -22,17 +22,14 @@ fn transcribes_both_channels_with_language_switching() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/conversation.m4a");
     let channels = recorder::decode(&bin, &fixture, &dir.path().join("decoded.f32")).unwrap();
 
-    let settings = Settings {
-        primary_lang: "uk".into(),
-        secondary_lang: Some("ru".into()),
-        ..Settings::default()
-    };
-    let segments = transcribe::transcribe(&model, &channels, &settings, |_| {}).unwrap();
+    let languages = vec!["en".to_string(), "uk".to_string(), "ru".to_string()];
+    let segments = transcribe::transcribe(&model, &channels, &languages, "", |_| {}).unwrap();
     let turns: Vec<(i64, &str)> = segments
         .iter()
         .map(|s| (s.speaker, s.lang.as_str()))
         .collect();
-    assert_eq!(turns[1..], [(1, "ru"), (0, "uk"), (1, "ru")]);
+    assert_eq!(turns, [(0, "en"), (1, "ru"), (0, "uk"), (1, "ru")]);
+    assert!(segments.iter().all(|s| s.text().ends_with('.')), "{segments:?}");
     assert!(
         segments[3].text().to_lowercase().contains("четверг"),
         "{}",

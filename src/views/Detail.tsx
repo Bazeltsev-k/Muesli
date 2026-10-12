@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { ask, save } from "@tauri-apps/plugin-dialog";
+import { save } from "@tauri-apps/plugin-dialog";
 import { api, LANGUAGES, type Note, type Recording, type Segment } from "../lib/api";
 import { useApp, useTauriEvent } from "../lib/context";
 import { formatDate, formatTime } from "../lib/format";
@@ -11,6 +11,8 @@ import { Player } from "../components/Player";
 import { Transcript } from "../components/Transcript";
 import { GeneralNote, TimedNotes } from "../components/Notes";
 import { RecordingPill } from "../components/LivePanel";
+import { HoldButton } from "../components/HoldButton";
+import { LanguagePicker } from "../components/LanguagePicker";
 
 export function Detail({ id }: { id: number }) {
   const { settings, activeId, go, notify } = useApp();
@@ -71,11 +73,7 @@ export function Detail({ id }: { id: number }) {
     }
   };
 
-  const remove = async () => {
-    if (await ask(`Delete “${rec.title}” with its audio, transcript and notes? This can't be undone.`, { title: "Delete recording", kind: "warning" })) {
-      api.deleteRecording(id).then(() => go({ name: "library" }), notify);
-    }
-  };
+  const remove = () => api.deleteRecording(id).then(() => go({ name: "library" }), notify);
 
   const seek = (ms: number) => {
     if (!audio.current) return;
@@ -116,12 +114,16 @@ export function Detail({ id }: { id: number }) {
               >
                 {segments.length > 0 ? "Re-transcribe" : "Transcribe"}
               </button>
-              <button className="btn hover:border-accent hover:text-accent" onClick={remove}>
-                Delete
-              </button>
+              <HoldButton onConfirm={remove}>Delete</HoldButton>
             </div>}
           </div>
-          <TagEditor tags={rec.tags} onChange={(tags) => api.setTags(id, tags).then(load, notify)} />
+          <div className="flex flex-wrap items-center gap-3">
+            <TagEditor tags={rec.tags} onChange={(tags) => api.setTags(id, tags).then(load, notify)} />
+            <div className="ml-auto flex items-center gap-2" title="Languages spoken in this recording. Each utterance is matched to one of them.">
+              <span className="cap">Languages</span>
+              <LanguagePicker value={rec.languages} onChange={(languages) => api.setLanguages(id, languages).then(load, notify)} />
+            </div>
+          </div>
         </div>
 
         {live ? (

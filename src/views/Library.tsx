@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { api, type Recording } from "../lib/api";
 import { useApp, useTauriEvent } from "../lib/context";
 import { formatDate, formatTime, prettyHotkey } from "../lib/format";
 import { StatusBadge } from "../components/StatusBadge";
 import { TagEditor } from "../components/TagEditor";
+import { HoldButton } from "../components/HoldButton";
 
 export function Library() {
   const { go, settings, activeId, notify } = useApp();
@@ -92,17 +92,9 @@ export function Library() {
                   <button className="btn h-7 px-2 text-xs" onClick={() => setTagging(tagging === r.id ? null : r.id)}>
                     {tagging === r.id ? "Done" : "Tag"}
                   </button>
-                  <button
-                    className="btn h-7 px-2 text-xs hover:border-accent hover:text-accent"
-                    disabled={activeId === r.id}
-                    onClick={async () => {
-                      if (await ask(`Delete “${r.title}” with its audio, transcript and notes? This can't be undone.`, { title: "Delete recording", kind: "warning" })) {
-                        api.deleteRecording(r.id).catch(notify);
-                      }
-                    }}
-                  >
+                  <HoldButton className="h-7 px-2 text-xs" disabled={activeId === r.id} onConfirm={() => api.deleteRecording(r.id).catch(notify)}>
                     Delete
-                  </button>
+                  </HoldButton>
                 </div>
               </div>
               {tagging === r.id && (
