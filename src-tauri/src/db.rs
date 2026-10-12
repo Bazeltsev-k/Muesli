@@ -49,7 +49,28 @@ pub struct Recording {
     pub note: String,
     pub tags: Vec<String>,
     pub languages: Vec<String>,
+    pub them: String,
 }
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct Tag {
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub id: i64,
+    pub word: i64,
+    pub end: i64,
+    pub body: String,
+}
+
+pub const TAG_COLORS: [&str; 9] = [
+    "#E5484D", "#F76B15", "#E0A12E", "#30A46C", "#12A594", "#3E63DD", "#8E4EC6", "#D6409F",
+    "#8D8D86",
+];
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -101,16 +122,30 @@ pub fn open(path: &Path) -> Result<Connection> {
         )?;
         conn.pragma_update(None, "user_version", 2)?;
     }
+    if version < 3 {
+        conn.execute_batch(
+            "ALTER TABLE recordings ADD COLUMN them TEXT NOT NULL DEFAULT '';
+             ALTER TABLE tags ADD COLUMN color TEXT NOT NULL DEFAULT '#8D8D86';
+             CREATE TABLE comments (
+               id INTEGER PRIMARY KEY,
+               recording_id INTEGER NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
+               word_start INTEGER NOT NULL,
+               word_end INTEGER NOT NULL,
+               body TEXT NOT NULL
+             );",
+        )?;
+        conn.pragma_update(None, "user_version", 3)?;
+    }
     Ok(conn)
 }
 
 const SELECT_RECORDING: &str = "
-SELECT r.id, r.title, r.created_at, r.duration_ms, r.status, r.error, r.note, r.languages,
+SELECT r.id, r.title, r.created_at, r.duration_ms, r.status, r.error, r.note, r.languages, r.them,
   (SELECT group_concat(t.name, char(31)) FROM recording_tags rt JOIN tags t ON t.id = rt.tag_id WHERE rt.recording_id = r.id)
 FROM recordings r";
 
 fn row_to_recording(row: &rusqlite::Row) -> Result<Recording> {
-    let tags: Option<String> = row.get(8)?;
+    let tags: Option<String> = row.get(9)?;
     let languages: String = row.get(7)?;
     let mut tags: Vec<String> = tags
         .map(|t| t.split('\u{1f}').map(String::from).collect())
@@ -130,6 +165,7 @@ fn row_to_recording(row: &rusqlite::Row) -> Result<Recording> {
             .filter(|l| !l.is_empty())
             .map(String::from)
             .collect(),
+        them: row.get(8)?,
     })
 }
 
@@ -137,13 +173,31 @@ pub fn create_recording(
     conn: &Connection,
     title: &str,
     created_at: i64,
+    status: &str,
     languages: &[String],
+    them: &str,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO recordings (title, created_at, status, languages) VALUES (?1, ?2, 'recording', ?3)",
-        params![title, created_at, languages.join(",")],
+        "INSERT INTO recordings (title, created_at, status, languages, them) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![title, created_at, status, languages.join(","), them],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+pub fn set_them(conn: &Connection, id: i64, them: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE recordings SET them = ?2 WHERE id = ?1",
+        params![id, them],
+    )?;
+    Ok(())
+}
+
+pub fn set_created_at(conn: &Connection, id: i64, created_at: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE recordings SET created_at = ?2 WHERE id = ?1",
+        params![id, created_at],
+    )?;
+    Ok(())
 }
 
 pub fn set_languages(conn: &Connection, id: i64, languages: &[String]) -> Result<()> {
@@ -171,7 +225,7 @@ pub fn list_recordings(
     let like = format!("%{}%", query.trim());
     let sql = format!(
         "{SELECT_RECORDING}
-        WHERE (?1 = '%%' OR r.title LIKE ?1 OR r.note LIKE ?1
+        WHERE (?1 = '%%' OR r.title LIKE ?1 OR r.note LIKE ?1 OR r.them LIKE ?1
           OR EXISTS (SELECT 1 FROM segments s WHERE s.recording_id = r.id AND s.text LIKE ?1)
           OR EXISTS (SELECT 1 FROM notes n WHERE n.recording_id = r.id AND n.body LIKE ?1)
           OR EXISTS (SELECT 1 FROM recording_tags rt JOIN tags t ON t.id = rt.tag_id WHERE rt.recording_id = r.id AND t.name LIKE ?1))
@@ -228,10 +282,6 @@ pub fn set_duration(conn: &Connection, id: i64, duration_ms: i64) -> Result<()> 
 
 pub fn delete_recording(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM recordings WHERE id = ?1", [id])?;
-    conn.execute(
-        "DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM recording_tags)",
-        [],
-    )?;
     Ok(())
 }
 
@@ -239,22 +289,81 @@ pub fn set_tags(conn: &mut Connection, id: i64, tags: &[String]) -> Result<()> {
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM recording_tags WHERE recording_id = ?1", [id])?;
     for tag in tags.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
-        tx.execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [tag])?;
+        let count: i64 = tx.query_row("SELECT count(*) FROM tags", [], |r| r.get(0))?;
+        tx.execute(
+            "INSERT OR IGNORE INTO tags (name, color) VALUES (?1, ?2)",
+            params![tag, TAG_COLORS[count as usize % TAG_COLORS.len()]],
+        )?;
         tx.execute(
             "INSERT OR IGNORE INTO recording_tags (recording_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2",
             params![id, tag],
         )?;
     }
-    tx.execute(
-        "DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM recording_tags)",
-        [],
-    )?;
     tx.commit()
 }
 
-pub fn all_tags(conn: &Connection) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT name FROM tags ORDER BY name COLLATE NOCASE")?;
-    let rows = stmt.query_map([], |r| r.get(0))?;
+pub fn all_tags(conn: &Connection) -> Result<Vec<Tag>> {
+    let mut stmt = conn.prepare("SELECT name, color FROM tags ORDER BY id")?;
+    let rows = stmt.query_map([], |r| {
+        Ok(Tag {
+            name: r.get(0)?,
+            color: r.get(1)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn upsert_tag(conn: &Connection, name: &str, color: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO tags (name, color) VALUES (?1, ?2) ON CONFLICT(name) DO UPDATE SET color = excluded.color",
+        params![name, color],
+    )?;
+    Ok(())
+}
+
+pub fn rename_tag(conn: &Connection, from: &str, to: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tags SET name = ?2 WHERE name = ?1",
+        params![from, to],
+    )?;
+    Ok(())
+}
+
+pub fn delete_tag(conn: &Connection, name: &str) -> Result<()> {
+    conn.execute("DELETE FROM tags WHERE name = ?1", [name])?;
+    Ok(())
+}
+
+pub fn add_comment(conn: &Connection, id: i64, word: i64, end: i64, body: &str) -> Result<Comment> {
+    conn.execute(
+        "INSERT INTO comments (recording_id, word_start, word_end, body) VALUES (?1, ?2, ?3, ?4)",
+        params![id, word, end, body],
+    )?;
+    Ok(Comment {
+        id: conn.last_insert_rowid(),
+        word,
+        end,
+        body: body.to_string(),
+    })
+}
+
+pub fn delete_comment(conn: &Connection, comment_id: i64) -> Result<()> {
+    conn.execute("DELETE FROM comments WHERE id = ?1", [comment_id])?;
+    Ok(())
+}
+
+pub fn list_comments(conn: &Connection, id: i64) -> Result<Vec<Comment>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, word_start, word_end, body FROM comments WHERE recording_id = ?1 ORDER BY word_start, id",
+    )?;
+    let rows = stmt.query_map([id], |r| {
+        Ok(Comment {
+            id: r.get(0)?,
+            word: r.get(1)?,
+            end: r.get(2)?,
+            body: r.get(3)?,
+        })
+    })?;
     rows.collect()
 }
 
@@ -333,8 +442,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut conn = open(&dir.path().join("t.db")).unwrap();
         let langs = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        let a = create_recording(&conn, "Weekly sync", 1, &langs(&["en", "uk", "ru"])).unwrap();
-        let b = create_recording(&conn, "1:1", 2, &langs(&["uk"])).unwrap();
+        let a = create_recording(
+            &conn,
+            "Weekly sync",
+            1,
+            "recording",
+            &langs(&["en", "uk", "ru"]),
+            "Olena",
+        )
+        .unwrap();
+        let b = create_recording(&conn, "1:1", 2, "draft", &langs(&["uk"]), "").unwrap();
+        set_them(&conn, b, "Max").unwrap();
+        assert_eq!(get_recording(&conn, b).unwrap().unwrap().status, "draft");
+        assert_eq!(list_recordings(&conn, "max", None).unwrap()[0].id, b);
         set_languages(&conn, a, &langs(&["en", "ru"])).unwrap();
         assert_eq!(
             get_recording(&conn, a).unwrap().unwrap().languages,
@@ -385,8 +505,39 @@ mod tests {
         assert_eq!(list_recordings(&conn, "", Some("team")).unwrap().len(), 1);
         assert_eq!(get_segments(&conn, b).unwrap()[0].text(), "Привіт світ");
 
+        let tag_names = |c: &Connection| {
+            all_tags(c)
+                .unwrap()
+                .into_iter()
+                .map(|t| t.name)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(tag_names(&conn), vec!["work", "Team"]);
+        assert_ne!(
+            all_tags(&conn).unwrap()[0].color,
+            all_tags(&conn).unwrap()[1].color
+        );
+        upsert_tag(&conn, "work", "#3E63DD").unwrap();
+        rename_tag(&conn, "work", "job").unwrap();
+        assert_eq!(get_recording(&conn, b).unwrap().unwrap().tags, vec!["job"]);
+        assert_eq!(
+            all_tags(&conn).unwrap()[0],
+            Tag {
+                name: "job".into(),
+                color: "#3E63DD".into()
+            }
+        );
+        assert!(rename_tag(&conn, "job", "team").is_err());
+        delete_tag(&conn, "job").unwrap();
+        assert!(get_recording(&conn, b).unwrap().unwrap().tags.is_empty());
+
+        let c = add_comment(&conn, a, 3, 5, "check this").unwrap();
+        assert_eq!(list_comments(&conn, a).unwrap(), vec![c.clone()]);
+        delete_comment(&conn, c.id).unwrap();
+        assert!(list_comments(&conn, a).unwrap().is_empty());
+
         delete_recording(&conn, a).unwrap();
-        assert_eq!(all_tags(&conn).unwrap(), vec!["work"]);
+        assert_eq!(tag_names(&conn), vec!["Team"]);
         assert!(list_notes(&conn, a).unwrap().is_empty());
     }
 }

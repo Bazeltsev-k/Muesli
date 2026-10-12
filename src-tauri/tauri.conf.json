@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "Muesli",
-        "width": 1180,
-        "height": 780,
-        "minWidth": 760,
-        "minHeight": 520,
+        "width": 1240,
+        "height": 820,
+        "minWidth": 820,
+        "minHeight": 560,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
       }
@@ -52,6 +52,9 @@
       "minimumSystemVersion": "14.4",
       "signingIdentity": "-",
       "entitlements": "Entitlements.plist"
+    },
+    "resources": {
+      "demo/*": "demo/"
     }
   },
   "plugins": {

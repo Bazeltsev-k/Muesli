@@ -29,7 +29,10 @@ fn transcribes_both_channels_with_language_switching() {
         .map(|s| (s.speaker, s.lang.as_str()))
         .collect();
     assert_eq!(turns, [(0, "en"), (1, "ru"), (0, "uk"), (1, "ru")]);
-    assert!(segments.iter().all(|s| s.text().ends_with('.')), "{segments:?}");
+    assert!(
+        segments.iter().all(|s| s.text().ends_with('.')),
+        "{segments:?}"
+    );
     assert!(
         segments[3].text().to_lowercase().contains("четверг"),
         "{}",

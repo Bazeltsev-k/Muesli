@@ -15,13 +15,15 @@ pub struct Settings {
     pub vocabulary: String,
     pub export_timestamps: bool,
     pub check_updates: bool,
+    pub ui: serde_json::Value,
+    pub demos_seeded: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             display_name: "Me".into(),
-            other_name: "Them".into(),
+            other_name: String::new(),
             theme: "system".into(),
             hotkey: "Control+Alt+R".into(),
             mic_device: None,
@@ -31,6 +33,8 @@ impl Default for Settings {
             vocabulary: String::new(),
             export_timestamps: true,
             check_updates: true,
+            ui: serde_json::Value::Null,
+            demos_seeded: false,
         }
     }
 }

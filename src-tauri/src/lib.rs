@@ -1,4 +1,5 @@
 pub mod db;
+pub mod demo;
 pub mod model;
 pub mod recorder;
 pub mod settings;
@@ -75,7 +76,7 @@ fn set_recording_ui(app: &AppHandle, id: Option<i64>) {
     let _ = state.toggle_item.set_text(if id.is_some() {
         "Stop recording"
     } else {
-        "Start recording"
+        "New recording"
     });
     if let Some(tray) = app.tray_by_id("main") {
         let _ = tray.set_title(id.map(|_| "REC"));
@@ -94,7 +95,8 @@ fn enqueue(app: &AppHandle, id: i64) {
 fn toggle(app: &AppHandle) {
     let state = app.state::<AppState>();
     if !stop(&state) {
-        start(app);
+        show_main(app);
+        let _ = app.emit("open-draft", ());
     }
 }
 
@@ -108,14 +110,14 @@ fn stop(state: &AppState) -> bool {
     }
 }
 
-fn start(app: &AppHandle) {
+fn start(app: &AppHandle, id: i64) {
     let state = app.state::<AppState>();
     if state.active.lock().unwrap().is_some() || state.starting.swap(true, Ordering::SeqCst) {
         return;
     }
     let app = app.clone();
     std::thread::spawn(move || {
-        let result = begin(&app);
+        let result = begin(&app, id);
         app.state::<AppState>()
             .starting
             .store(false, Ordering::SeqCst);
@@ -125,7 +127,7 @@ fn start(app: &AppHandle) {
     });
 }
 
-fn begin(app: &AppHandle) -> Res<()> {
+fn begin(app: &AppHandle, id: i64) -> Res<()> {
     let state = app.state::<AppState>();
     let bin = recorder::binary();
     let settings = state.settings.lock().unwrap().clone();
@@ -148,13 +150,11 @@ fn begin(app: &AppHandle) -> Res<()> {
         );
     }
 
-    let id = db::create_recording(
-        &state.db.lock().unwrap(),
-        "New recording",
-        now_ms(),
-        &settings.languages,
-    )
-    .map_err(err)?;
+    {
+        let db = state.db.lock().unwrap();
+        db::set_created_at(&db, id, now_ms()).map_err(err)?;
+        db::set_status(&db, id, "recording", None).map_err(err)?;
+    }
     let dir = state.recording_dir(id);
     let spawned = std::fs::create_dir_all(&dir)
         .and_then(|_| recorder::spawn(&dir, settings.mic_device.as_deref(), system));
@@ -338,7 +338,7 @@ fn set_languages(
 }
 
 #[tauri::command]
-fn all_tags(state: State<AppState>) -> Res<Vec<String>> {
+fn all_tags(state: State<AppState>) -> Res<Vec<db::Tag>> {
     db::all_tags(&state.db.lock().unwrap()).map_err(err)
 }
 
@@ -379,8 +379,92 @@ fn audio_path(state: State<AppState>, id: i64) -> String {
 }
 
 #[tauri::command]
-fn start_recording(app: AppHandle) {
-    start(&app);
+fn create_draft(app: AppHandle, state: State<AppState>) -> Res<i64> {
+    if let Some(id) = db::ids_with_status(&state.db.lock().unwrap(), &["draft"])
+        .map_err(err)?
+        .first()
+    {
+        return Ok(*id);
+    }
+    let settings = state.settings.lock().unwrap().clone();
+    let id = db::create_recording(
+        &state.db.lock().unwrap(),
+        "",
+        now_ms(),
+        "draft",
+        &settings.languages,
+        &settings.other_name,
+    )
+    .map_err(err)?;
+    changed(&app);
+    Ok(id)
+}
+
+#[tauri::command]
+fn start_recording(app: AppHandle, id: i64) {
+    start(&app, id);
+}
+
+#[tauri::command]
+fn update_them(app: AppHandle, state: State<AppState>, id: i64, them: String) -> Res<()> {
+    db::set_them(&state.db.lock().unwrap(), id, them.trim()).map_err(err)?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_tag_color(app: AppHandle, state: State<AppState>, name: String, color: String) -> Res<()> {
+    db::upsert_tag(&state.db.lock().unwrap(), &name, &color).map_err(err)?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn rename_tag(app: AppHandle, state: State<AppState>, from: String, to: String) -> Res<()> {
+    db::rename_tag(&state.db.lock().unwrap(), &from, to.trim())
+        .map_err(|_| format!("A tag named “{}” already exists", to.trim()))?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_tag(app: AppHandle, state: State<AppState>, name: String) -> Res<()> {
+    db::delete_tag(&state.db.lock().unwrap(), &name).map_err(err)?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn list_comments(state: State<AppState>, id: i64) -> Res<Vec<db::Comment>> {
+    db::list_comments(&state.db.lock().unwrap(), id).map_err(err)
+}
+
+#[tauri::command]
+fn add_comment(
+    state: State<AppState>,
+    id: i64,
+    word: i64,
+    end: i64,
+    body: String,
+) -> Res<db::Comment> {
+    db::add_comment(&state.db.lock().unwrap(), id, word, end, body.trim()).map_err(err)
+}
+
+#[tauri::command]
+fn delete_comment(state: State<AppState>, comment_id: i64) -> Res<()> {
+    db::delete_comment(&state.db.lock().unwrap(), comment_id).map_err(err)
+}
+
+#[tauri::command]
+fn set_segments(
+    app: AppHandle,
+    state: State<AppState>,
+    id: i64,
+    segments: Vec<Segment>,
+) -> Res<()> {
+    db::replace_segments(&mut state.db.lock().unwrap(), id, &segments).map_err(err)?;
+    changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -521,11 +605,25 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(dir.join("recordings"))?;
-            let conn = db::open(&dir.join("muesli.db"))?;
-            let settings = settings::load(&dir.join("settings.json"));
+            let mut conn = db::open(&dir.join("muesli.db"))?;
+            let mut settings = settings::load(&dir.join("settings.json"));
+            if !settings.demos_seeded {
+                match demo::seed(
+                    &mut conn,
+                    &app.path().resource_dir()?.join("demo"),
+                    &dir.join("recordings"),
+                    now_ms(),
+                ) {
+                    Ok(()) => {
+                        settings.demos_seeded = true;
+                        let _ = settings::save(&dir.join("settings.json"), &settings);
+                    }
+                    Err(e) => eprintln!("seeding demos failed: {e}"),
+                }
+            }
 
             let toggle_item =
-                MenuItem::with_id(app, "toggle", "Start recording", true, None::<&str>)?;
+                MenuItem::with_id(app, "toggle", "New recording", true, None::<&str>)?;
             let open_item = MenuItem::with_id(app, "open", "Open Muesli", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Muesli", true, None::<&str>)?;
             let menu = Menu::with_items(
@@ -611,7 +709,16 @@ pub fn run() {
             delete_note,
             delete_recording,
             audio_path,
+            create_draft,
             start_recording,
+            update_them,
+            set_tag_color,
+            rename_tag,
+            delete_tag,
+            list_comments,
+            add_comment,
+            delete_comment,
+            set_segments,
             stop_recording,
             pause_recording,
             active_recording,

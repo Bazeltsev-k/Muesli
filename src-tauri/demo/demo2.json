@@ -1,0 +1,243 @@
+{
+ "title": "Demo: one-on-one with Max",
+ "them": "Max",
+ "languages": [
+  "en",
+  "uk"
+ ],
+ "minutesAgo": 25,
+ "tags": [
+  {
+   "name": "demo",
+   "color": "#8D8D86"
+  },
+  {
+   "name": "1:1",
+   "color": "#30A46C"
+  }
+ ],
+ "note": "Max wants to own the export feature. Check in again in two weeks.",
+ "notes": [
+  {
+   "atMs": 8000,
+   "body": "Growth goal: lead a feature"
+  }
+ ],
+ "comments": [
+  {
+   "word": 18,
+   "end": 19,
+   "body": "Assign export to Max"
+  }
+ ],
+ "segments": [
+  {
+   "speaker": 0,
+   "startMs": 100,
+   "endMs": 4050,
+   "lang": "uk",
+   "words": [
+    {
+     "startMs": 100,
+     "text": "Привіт,"
+    },
+    {
+     "startMs": 820,
+     "text": "Максе,"
+    },
+    {
+     "startMs": 1640,
+     "text": "як"
+    },
+    {
+     "startMs": 1960,
+     "text": "просувається"
+    },
+    {
+     "startMs": 2680,
+     "text": "робота"
+    },
+    {
+     "startMs": 3140,
+     "text": "над"
+    },
+    {
+     "startMs": 3320,
+     "text": "плеєром?"
+    }
+   ]
+  },
+  {
+   "speaker": 1,
+   "startMs": 5130,
+   "endMs": 9720,
+   "lang": "en",
+   "words": [
+    {
+     "startMs": 5130,
+     "text": "Pretty"
+    },
+    {
+     "startMs": 5530,
+     "text": "well."
+    },
+    {
+     "startMs": 6130,
+     "text": "Next"
+    },
+    {
+     "startMs": 6530,
+     "text": "quarter"
+    },
+    {
+     "startMs": 6750,
+     "text": "I'd"
+    },
+    {
+     "startMs": 7070,
+     "text": "like"
+    },
+    {
+     "startMs": 7210,
+     "text": "to"
+    },
+    {
+     "startMs": 7390,
+     "text": "own"
+    },
+    {
+     "startMs": 7490,
+     "text": "a"
+    },
+    {
+     "startMs": 7690,
+     "text": "whole"
+    },
+    {
+     "startMs": 8190,
+     "text": "feature,"
+    },
+    {
+     "startMs": 8750,
+     "text": "maybe"
+    },
+    {
+     "startMs": 9310,
+     "text": "export."
+    }
+   ]
+  },
+  {
+   "speaker": 0,
+   "startMs": 10780,
+   "endMs": 15480,
+   "lang": "uk",
+   "words": [
+    {
+     "startMs": 10780,
+     "text": "Чудово,"
+    },
+    {
+     "startMs": 11600,
+     "text": "тоді"
+    },
+    {
+     "startMs": 12020,
+     "text": "експорт"
+    },
+    {
+     "startMs": 12640,
+     "text": "твій."
+    },
+    {
+     "startMs": 13340,
+     "text": "Переглянемо"
+    },
+    {
+     "startMs": 14240,
+     "text": "план"
+    },
+    {
+     "startMs": 14520,
+     "text": "за"
+    },
+    {
+     "startMs": 14720,
+     "text": "два"
+    },
+    {
+     "startMs": 14960,
+     "text": "тижні."
+    }
+   ]
+  },
+  {
+   "speaker": 1,
+   "startMs": 16590,
+   "endMs": 19070,
+   "lang": "en",
+   "words": [
+    {
+     "startMs": 16590,
+     "text": "Deal."
+    },
+    {
+     "startMs": 17070,
+     "text": "I'll"
+    },
+    {
+     "startMs": 17350,
+     "text": "have"
+    },
+    {
+     "startMs": 17470,
+     "text": "a"
+    },
+    {
+     "startMs": 17770,
+     "text": "draft"
+    },
+    {
+     "startMs": 18170,
+     "text": "plan"
+    },
+    {
+     "startMs": 18470,
+     "text": "ready"
+    },
+    {
+     "startMs": 18730,
+     "text": "by"
+    },
+    {
+     "startMs": 19050,
+     "text": "Monday."
+    }
+   ]
+  },
+  {
+   "speaker": 0,
+   "startMs": 20370,
+   "endMs": 22730,
+   "lang": "uk",
+   "words": [
+    {
+     "startMs": 20370,
+     "text": "Дякую,"
+    },
+    {
+     "startMs": 21210,
+     "text": "Максе,"
+    },
+    {
+     "startMs": 21990,
+     "text": "до"
+    },
+    {
+     "startMs": 22270,
+     "text": "понеділка."
+    }
+   ]
+  }
+ ]
+}
