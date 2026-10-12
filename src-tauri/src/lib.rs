@@ -214,6 +214,8 @@ fn finish(app: &AppHandle, id: i64, outcome: Res<i64>) {
         ms => Ok(ms),
     }) {
         Ok(ms) => {
+            let dir = state.recording_dir(id);
+            std::thread::spawn(move || playback_file(&dir));
             let _ = db::set_duration(&db, id, ms);
             let _ = db::set_status(&db, id, "recorded", None);
             drop(db);
@@ -370,12 +372,23 @@ fn delete_recording(app: AppHandle, state: State<AppState>, id: i64) -> Res<()> 
 }
 
 #[tauri::command]
-fn audio_path(state: State<AppState>, id: i64) -> String {
-    state
-        .recording_dir(id)
-        .join("audio.m4a")
-        .to_string_lossy()
-        .into_owned()
+async fn audio_path(state: State<'_, AppState>, id: i64) -> Res<String> {
+    playback_file(&state.recording_dir(id))
+}
+
+fn playback_file(dir: &std::path::Path) -> Res<String> {
+    let playback = dir.join("playback.m4a");
+    if !playback.exists() {
+        recorder::run(
+            &recorder::binary(),
+            &[
+                "mixdown",
+                &dir.join("audio.m4a").to_string_lossy(),
+                &playback.to_string_lossy(),
+            ],
+        )?;
+    }
+    Ok(playback.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

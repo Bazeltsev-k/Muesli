@@ -45,6 +45,30 @@ func inputChannels(_ id: AudioObjectID) -> [UInt32] {
     return UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self)).map { $0.mNumberChannels }
 }
 
+func transportType(_ id: AudioObjectID) -> UInt32 {
+    var addr = address(kAudioDevicePropertyTransportType)
+    var value: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &value)
+    return value
+}
+
+func deviceID(_ uid: String) -> AudioObjectID? {
+    var addr = address(kAudioHardwarePropertyDevices)
+    var size: UInt32 = 0
+    AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size)
+    var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+    AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids)
+    return ids.first { stringProperty($0, kAudioDevicePropertyDeviceUID) == uid }
+}
+
+func preferredDefaultInput() -> String? {
+    guard let uid = defaultInputUID(), let id = deviceID(uid) else { return defaultInputUID() }
+    let bluetooth = [kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE].contains(transportType(id))
+    guard bluetooth else { return uid }
+    return inputDevices().compactMap { $0["id"] }.first { deviceID($0).map { transportType($0) == kAudioDeviceTransportTypeBuiltIn } ?? false } ?? uid
+}
+
 func defaultInputUID() -> String? {
     var addr = address(kAudioHardwarePropertyDefaultInputDevice)
     var id = AudioObjectID(kAudioObjectUnknown)
@@ -132,7 +156,7 @@ final class Recorder {
         raw = try! FileHandle(forWritingTo: rawURL)
 
         let available = Set(inputDevices().compactMap { $0["id"] })
-        guard let mic = micUID.flatMap({ available.contains($0) ? $0 : nil }) ?? defaultInputUID() else { fail("No input device") }
+        guard let mic = micUID.flatMap({ available.contains($0) ? $0 : nil }) ?? preferredDefaultInput() else { fail("No input device") }
         var desc: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Muesli Recorder",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
@@ -297,6 +321,41 @@ func record(_ dir: URL, micUID: String?, system: Bool) -> Never {
     exit(0)
 }
 
+func mixdown(_ input: URL, _ output: URL) {
+    do {
+        let file = try AVAudioFile(forReading: input)
+        let format = file.processingFormat
+        let rate = format.sampleRate
+        var settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate, AVNumberOfChannelsKey: 2]
+        if rate >= 32000 { settings[AVEncoderBitRateKey] = 96000 }
+        let tmp = output.deletingLastPathComponent().appendingPathComponent("playback.tmp.m4a")
+        try? FileManager.default.removeItem(at: tmp)
+        let out = try AVAudioFile(forWriting: tmp, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let inBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16384)!
+        let outBuffer = AVAudioPCMBuffer(pcmFormat: out.processingFormat, frameCapacity: 16384)!
+        while file.framePosition < file.length {
+            try file.read(into: inBuffer, frameCount: AVAudioFrameCount(min(16384, file.length - file.framePosition)))
+            let n = Int(inBuffer.frameLength)
+            if n == 0 { break }
+            let channels = Int(format.channelCount)
+            for i in 0..<n {
+                var sum: Float = 0
+                for c in 0..<channels { sum += inBuffer.floatChannelData![c][i] }
+                let v = max(-1, min(1, sum))
+                outBuffer.floatChannelData![0][i] = v
+                outBuffer.floatChannelData![1][i] = v
+            }
+            outBuffer.frameLength = AVAudioFrameCount(n)
+            try out.write(from: outBuffer)
+        }
+        try? FileManager.default.removeItem(at: output)
+        try FileManager.default.moveItem(at: tmp, to: output)
+        emit(["type": "done"])
+    } catch {
+        fail("Preparing playback failed: \(error.localizedDescription)")
+    }
+}
+
 func decode(_ input: URL, _ output: URL) {
     do {
         let file = try AVAudioFile(forReading: input)
@@ -343,8 +402,10 @@ case "record" where args.count > 2:
     record(URL(fileURLWithPath: args[2]), micUID: mic, system: !args.contains("--no-system"))
 case "finalize" where args.count > 2:
     finalize(URL(fileURLWithPath: args[2]))
+case "mixdown" where args.count > 3:
+    mixdown(URL(fileURLWithPath: args[2]), URL(fileURLWithPath: args[3]))
 case "decode" where args.count > 3:
     decode(URL(fileURLWithPath: args[2]), URL(fileURLWithPath: args[3]))
 default:
-    fail("usage: muesli-recorder devices|permissions|request <kind>|record <dir> [--mic uid] [--no-system]|finalize <dir>|decode <in> <out>")
+    fail("usage: muesli-recorder devices|permissions|request <kind>|record <dir> [--mic uid] [--no-system]|finalize <dir>|decode <in> <out>|mixdown <in> <out>")
 }

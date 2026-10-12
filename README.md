@@ -95,22 +95,6 @@ Use headphones during calls so your microphone doesn't pick up the other side.
 
 Recordings, transcripts, notes and settings live in `~/Library/Application Support/com.bazeltsev.muesli` and never leave your Mac. The only network requests are the one-time model download from Hugging Face and the update check against GitHub Releases, which you can turn off.
 
-## How it works
-
-```mermaid
-flowchart TB
-  UI["<b>React UI</b> in a Tauri webview<br/>home · recording · settings · walkthrough"]
-  Core["<b>Rust core</b><br/>SQLite library · transcription queue · model download<br/>whisper.cpp on Metal with per-utterance language detection and word timestamps"]
-  Audio["<b>Swift audio helper</b><br/>Core Audio process tap + microphone → stereo AAC<br/>permissions · decoding for transcription"]
-  UI <-->|commands and events| Core
-  Core <-->|sidecar process| Audio
-```
-
-- `src/`: React interface
-- `src-tauri/src/`: Rust core (database, transcription, commands)
-- `src-tauri/recorder/main.swift`: audio helper, built by `build.rs` and bundled as a sidecar
-- `src-tauri/demo/`: demo recordings loaded on first launch
-
 ## Develop
 
 Requirements: macOS 14.4+ on Apple Silicon, Xcode Command Line Tools, Rust, [Bun](https://bun.sh) and CMake (`brew install cmake`).
