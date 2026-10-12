@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: bun install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tauriScript: bun tauri
+          tagName: v__VERSION__
+          releaseName: Muesli v__VERSION__
+          releaseBody: |
+            Download `Muesli_*_aarch64.dmg`, drag Muesli to Applications, then run once in Terminal:
+
+                xattr -cr /Applications/Muesli.app
+
+            Muesli isn't notarized by Apple, so macOS blocks it until the quarantine flag is cleared. Later versions install themselves through the in-app updater.
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: false
