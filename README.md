@@ -3,7 +3,7 @@
 A local-first meeting recorder for macOS. Muesli records your microphone and your computer's audio into separate channels, transcribes them on-device with whisper.cpp, and keeps everything on your Mac.
 
 - Mic and system audio in separate stereo channels, so every line is labelled with who said it
-- On-device transcription (Whisper large-v3-turbo, Metal) in English, Ukrainian and Russian, with a primary and secondary language per speaker turn
+- On-device transcription (Whisper large-v3-turbo, Metal) in English, Ukrainian and Russian; each utterance is matched to the languages you pick for that recording
 - Playback with a karaoke transcript: the current word is highlighted, and clicking any word jumps there
 - Titles, colored tags, general and timestamped notes, comments on any words, editable transcripts, full-text search
 - Interface in English, Ukrainian and Russian, with a first-launch walkthrough and two demo recordings
