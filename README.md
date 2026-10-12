@@ -97,19 +97,13 @@ Recordings, transcripts, notes and settings live in `~/Library/Application Suppo
 
 ## How it works
 
-```
-┌──────────── React UI (Tauri webview) ─────────────┐
-│ home · recording · settings · walkthrough          │
-└──────────────── commands / events ─────────────────┘
-┌──────────────────── Rust core ─────────────────────┐
-│ SQLite library · transcription queue · model download │
-│ whisper.cpp (Metal) with per-utterance language     │
-│ detection and word timestamps                       │
-└───────────────────── sidecar ──────────────────────┘
-┌──────────────── Swift audio helper ────────────────┐
-│ Core Audio process tap + microphone → stereo AAC    │
-│ permissions · decoding for transcription            │
-└─────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  UI["<b>React UI</b> in a Tauri webview<br/>home · recording · settings · walkthrough"]
+  Core["<b>Rust core</b><br/>SQLite library · transcription queue · model download<br/>whisper.cpp on Metal with per-utterance language detection and word timestamps"]
+  Audio["<b>Swift audio helper</b><br/>Core Audio process tap + microphone → stereo AAC<br/>permissions · decoding for transcription"]
+  UI <-->|commands and events| Core
+  Core <-->|sidecar process| Audio
 ```
 
 - `src/`: React interface
@@ -134,13 +128,6 @@ cd src-tauri && cargo test
 ```
 
 The end-to-end transcription test runs when the model is present in `~/Library/Application Support/com.bazeltsev.muesli/models`.
-
-## Releasing
-
-1. Bump `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`.
-2. Tag and push: `git tag v0.2.0 && git push --tags`.
-
-The Release workflow builds the app, signs the update and publishes a GitHub release with `latest.json` for the in-app updater. Running the workflow by hand creates a draft instead.
 
 ## License
 

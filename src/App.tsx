@@ -15,7 +15,7 @@ import { Home, Notch, RecMeta, TagFilters, groupByDay } from "./views/Home";
 import { RecordingView } from "./views/Recording";
 import { SECTIONS, SettingsView, prettyHotkey } from "./views/Settings";
 
-const DEFAULT_THEME: Theme = { h: 8, c: 62, bh: 8, bc: 30, grain: 0.5, bgrain: 0.3, depth: 0.25, lift: 0.1, mode: "auto" };
+const DEFAULT_THEME: Theme = { h: 262, c: 52, bh: 330, bc: 55, grain: 1, bgrain: 0.56, depth: 0, lift: 0, mode: "auto" };
 
 export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -355,7 +355,7 @@ function Shell({ initial }: { initial: Settings }) {
                 <button className="newrec" onClick={newRecording}>
                   <i className="dot" />
                   {t.newRec}
-                  <span className="kbd">{prettyHotkey(settings.hotkey)}</span>
+                  {settings.hotkey && <span className="kbd">{prettyHotkey(settings.hotkey)}</span>}
                 </button>
                 <label className="search">
                   {Icon.search}

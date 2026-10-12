@@ -27,24 +27,34 @@ export const prettyHotkey = (h: string) =>
 function HotkeyInput({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const { t } = useApp();
   const [listening, setListening] = useState(false);
+  useEffect(() => {
+    if (!listening) return;
+    const k = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") return setListening(false);
+      const key = e.code.startsWith("Key") ? e.code.slice(3) : e.code.startsWith("Digit") ? e.code.slice(5) : /^F\d+$/.test(e.code) || e.code === "Space" ? e.code : null;
+      const mods = MODIFIERS.filter(([m]) => e[m]).map(([, name]) => name);
+      if (key && mods.length > 0) {
+        setListening(false);
+        onSave([...mods, key].join("+"));
+      }
+    };
+    const cancel = () => setListening(false);
+    window.addEventListener("keydown", k, true);
+    window.addEventListener("pointerdown", cancel);
+    return () => {
+      window.removeEventListener("keydown", k, true);
+      window.removeEventListener("pointerdown", cancel);
+    };
+  }, [listening]);
   return (
     <span style={{ display: "flex", gap: 6 }}>
       <button
         className="textin mono"
         style={{ width: 150, textAlign: "center", fontWeight: 600, boxShadow: listening ? "0 0 0 2px var(--accent)" : undefined }}
-        onClick={() => setListening(true)}
-        onBlur={() => setListening(false)}
-        onKeyDown={(e) => {
-          if (!listening) return;
-          e.preventDefault();
-          if (e.key === "Escape") return setListening(false);
-          const key = e.code.startsWith("Key") ? e.code.slice(3) : e.code.startsWith("Digit") ? e.code.slice(5) : /^F\d+$/.test(e.code) || e.code === "Space" ? e.code : null;
-          const mods = MODIFIERS.filter(([k]) => e[k]).map(([, name]) => name);
-          if (key && mods.length > 0) {
-            setListening(false);
-            onSave([...mods, key].join("+"));
-          }
-        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => setListening(!listening)}
       >
         {listening ? t.hotkeyPress : value ? prettyHotkey(value) : t.hotkeyNone}
       </button>

@@ -46,7 +46,7 @@ export function Tour({ hotkey, lang, setLang, step, setStep, onEnd, actionDone }
     return () => window.removeEventListener("keydown", k);
   });
   const [title, rawBody] = tt.steps[step];
-  const body = rawBody.replace("{hotkey}", hotkey);
+  const body = hotkey ? rawBody.replace("{hotkey}", hotkey) : rawBody.replace(/\s*[^.!?]*\{hotkey\}\.?/, "");
   const action = TOUR_STEPS[step].action;
   const done = !action || actionDone(action);
   const pad = 8;

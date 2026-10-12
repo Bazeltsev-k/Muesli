@@ -1,5 +1,5 @@
 :root{
-  --h:8; --c:62; --bh:8; --bc:30; --grain:.5; --bgrain:.3; --depth:.25; --lift:.1;
+  --h:262; --c:52; --bh:330; --bc:55; --grain:1; --bgrain:.56; --depth:0; --lift:0;
   --base:hsl(var(--bh) calc(var(--bc)*.95%) calc(97% - var(--bc)*.05%));
   --pip:color-mix(in oklab,var(--bg),#fff calc(var(--lift)*40% + 6%));
   --side:hsl(var(--h) calc(var(--c)*.85%) 89%);

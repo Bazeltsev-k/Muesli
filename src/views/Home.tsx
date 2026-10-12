@@ -121,7 +121,7 @@ function HomeRow({ r }: { r: Recording }) {
 }
 
 export function Home({ footer }: { footer: React.ReactNode }) {
-  const { t, recordings, query, setQuery, newRecording } = useApp();
+  const { t, recordings, query, setQuery, newRecording, settings } = useApp();
   return (
     <>
     <div className="homewrap">
@@ -141,9 +141,11 @@ export function Home({ footer }: { footer: React.ReactNode }) {
         <button className="bigrec" onClick={newRecording}>
           <i />
           {t.newRec}
-          <span className="kbd" style={{ color: "#fff", opacity: 0.7 }}>
-            {prettyHotkey(useApp().settings.hotkey)}
-          </span>
+          {settings.hotkey && (
+            <span className="kbd" style={{ color: "#fff", opacity: 0.7 }}>
+              {prettyHotkey(settings.hotkey)}
+            </span>
+          )}
         </button>
       </div>
       <div className="hfilters">
