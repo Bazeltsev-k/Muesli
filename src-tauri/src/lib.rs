@@ -133,8 +133,8 @@ fn begin(app: &AppHandle) -> Res<()> {
     if perms["microphone"] == "undetermined" {
         perms = recorder::run(&bin, &["request", "microphone"])?;
     }
-    if perms["microphone"] == "denied" {
-        return Err("Microphone access is denied. Allow it in Settings → Permissions.".into());
+    if perms["microphone"] != "granted" && perms["microphone"] != "unknown" {
+        return Err("Microphone access isn't granted. Allow it in Settings → Permissions.".into());
     }
     let mut system = settings.capture_system;
     if system && perms["systemAudio"] == "undetermined" {
@@ -204,7 +204,10 @@ fn finalize(state: &AppState, id: i64) -> Res<i64> {
 fn finish(app: &AppHandle, id: i64, outcome: Res<i64>) {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
-    match outcome {
+    match outcome.and_then(|ms| match ms {
+        0 => Err("No audio was captured. Check Settings → Permissions.".to_string()),
+        ms => Ok(ms),
+    }) {
         Ok(ms) => {
             let _ = db::set_duration(&db, id, ms);
             let _ = db::set_status(&db, id, "recorded", None);

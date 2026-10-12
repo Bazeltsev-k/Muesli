@@ -26,25 +26,40 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/recordings/**"]
+        "scope": [
+          "$APPDATA/recordings/**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/muesli-recorder"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
+    "externalBin": [
+      "binaries/muesli-recorder"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
+    ],
     "macOS": {
       "minimumSystemVersion": "14.4",
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist"
     }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZEMDhCOTI0QkY4OTNFQTgKUldTb1BvbS9KTGtJYllBdU5wczFYSmE5RFJwMHJjOFRaN2Z0Z3NEU3hjSUJONzlDSG5IdHIxSWoK",
-      "endpoints": ["https://github.com/Bazeltsev-k/Muesli/releases/latest/download/latest.json"]
+      "endpoints": [
+        "https://github.com/Bazeltsev-k/Muesli/releases/latest/download/latest.json"
+      ]
     }
   }
 }
