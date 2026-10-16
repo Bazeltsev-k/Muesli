@@ -28,7 +28,7 @@ impl Default for Settings {
             hotkey: "CommandOrControl+Shift+R".into(),
             mic_device: None,
             capture_system: true,
-            languages: vec!["en".into(), "uk".into(), "ru".into()],
+            languages: vec!["en".into(), "uk".into()],
             auto_transcribe: true,
             vocabulary: String::new(),
             export_timestamps: true,

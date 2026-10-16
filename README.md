@@ -22,7 +22,7 @@
 
 Meeting notes apps usually send your audio to someone else's servers. Muesli doesn't. It captures your microphone and your computer's audio as two separate channels, so every line of the transcript knows who said it, and it runs Whisper on your Mac's GPU. No accounts, no cloud, no subscription.
 
-It was built for people who switch between English, Ukrainian and Russian in the same call.
+It was built for people who switch between English and Ukrainian in the same call.
 
 ## Features
 
@@ -31,18 +31,20 @@ It was built for people who switch between English, Ukrainian and Russian in the
 - Start from the app, the menu bar or a global hotkey (default `⌘⇧R`)
 - Name the recording, set who you're talking with and which languages to expect before pressing Start
 - Write notes while you record and mark moments with a timestamp
+- Notes and transcript side by side in resizable, collapsible columns, or stacked
 - Keep browsing while recording; a floating panel keeps the timer, levels, marks and Stop at hand
 
 **Transcription**
 - Whisper large-v3-turbo running locally with Metal acceleration, about 4–5 minutes per hour of audio on an M4
-- English, Ukrainian and Russian; each utterance is matched to the languages you checked for that recording
+- English and Ukrainian, even mixed in one call; each utterance is matched to the languages you checked for that recording
 - Proper sentences and punctuation, paragraphs split on pauses
 - Re-transcribe any time with different languages
 
 **Reviewing**
 - Karaoke playback: the current word is highlighted and clicking any word jumps there
 - Comment on a word or a selection; comments and notes show as markers on the timeline
-- Edit the transcript in place
+- Edit any part of the transcript in place, change who said it, or delete a block with undo
+- Select blocks Notion-style and move or copy them, audio included, into another recording or a new one
 - Playback continues in a mini player while you look at other recordings
 - Export to `.txt` with speaker names and timestamps
 
@@ -54,7 +56,7 @@ It was built for people who switch between English, Ukrainian and Russian in the
 **Making it yours**
 - Pick sidebar and background colors, grain and how floating panels stand out, with live previews
 - Light, dark or follow the system
-- Interface in English, Ukrainian and Russian
+- Interface in English and Ukrainian
 - A short walkthrough on first launch, using two demo recordings you can delete
 
 ## Screenshots

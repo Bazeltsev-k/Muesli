@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { Recording, Segment, Word } from "./api";
+import type { Comment, Recording, Segment, Word } from "./api";
 
 export const fmt = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -69,7 +69,35 @@ export function rewordRange(segments: Segment[], first: number, last: number, te
     .filter((s) => s.words.length > 0);
 }
 
-export function transcriptText(rec: Recording, segments: Segment[], names: [string, string], timestamps: boolean, untitled: string) {
+export function setTurnSpeaker(segments: Segment[], firstWord: number, speaker: number): Segment[] {
+  const turn = turnsOf(segments).find((t) => t.paras[0][0].i === firstWord);
+  if (!turn) return segments;
+  const lastWord = turn.paras[turn.paras.length - 1].at(-1)!.i;
+  let index = 0;
+  return segments.map((s) => {
+    const first = index;
+    index += s.words.length;
+    return s.words.length && first >= firstWord && first <= lastWord ? { ...s, speaker } : s;
+  });
+}
+
+export function removeTurns(segments: Segment[], comments: Comment[], keys: number[]) {
+  const ranges = turnsOf(segments)
+    .filter((tn) => keys.includes(tn.paras[0][0].i))
+    .map((tn) => [tn.paras[0][0].i, tn.paras[tn.paras.length - 1].at(-1)!.i]);
+  const gone = (i: number) => ranges.some(([a, b]) => i >= a && i <= b);
+  const before = (i: number) => ranges.reduce((n, [a, b]) => n + (b < i ? b - a + 1 : 0), 0);
+  let k = 0;
+  return {
+    segments: segments.map((s) => ({ ...s, words: s.words.filter(() => !gone(k++)) })).filter((s) => s.words.length > 0),
+    comments: comments.filter((c) => !ranges.some(([a, b]) => c.word <= b && c.end >= a)).map((c) => ({ ...c, word: c.word - before(c.word), end: c.end - before(c.end) })),
+  };
+}
+
+const EXTRA_SPEAKER_COLORS = ["#30A46C", "#F76B15", "#D6409F", "#12A594", "#E0A12E", "#E5484D"];
+export const speakerColor = (i: number) => (i === 0 ? "var(--me)" : i === 1 ? "var(--them)" : EXTRA_SPEAKER_COLORS[(i - 2) % EXTRA_SPEAKER_COLORS.length]);
+
+export function transcriptText(rec: Recording, segments: Segment[], names: string[], timestamps: boolean, untitled: string) {
   const lines = turnsOf(segments).map((t) => `${timestamps ? `[${fmt(t.start)}] ` : ""}${names[t.speaker] ?? names[1]}: ${t.paras.flat().map((w) => w.text).join(" ")}`);
   return `${rec.title || untitled}\n\n${lines.join("\n")}\n`;
 }
@@ -103,4 +131,10 @@ export function useTauriEvent<T>(name: string, handler: (payload: T) => void) {
       unlisten.then((f) => f());
     };
   }, [name]);
+}
+
+export function useStable<T extends Record<string, (...args: never[]) => unknown>>(fns: T): T {
+  const ref = useRef(fns);
+  ref.current = fns;
+  return useMemo(() => Object.fromEntries(Object.keys(fns).map((k) => [k, (...args: never[]) => ref.current[k](...args)])) as T, []);
 }

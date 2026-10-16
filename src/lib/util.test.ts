@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeIndex, fmt, rewordRange, transcriptText, turnsOf } from "./util";
+import { activeIndex, fmt, removeTurns, rewordRange, setTurnSpeaker, transcriptText, turnsOf } from "./util";
 import type { Recording, Segment } from "./api";
 
 const seg = (speaker: number, startMs: number, text: string): Segment => ({
@@ -24,6 +24,23 @@ describe("transcript helpers", () => {
     expect(times[1]).toBe(100);
     expect(times.every((t, i) => i === 0 || t >= times[i - 1])).toBe(true);
     expect(times[4]).toBeLessThan(2100);
+  });
+
+  it("drops a whole range when the new text is empty", () => {
+    const out = rewordRange([seg(0, 0, "a b"), seg(1, 2000, "c d"), seg(0, 4000, "e")], 2, 3, "");
+    expect(out.map((s) => s.words.map((w) => w.text).join(" "))).toEqual(["a b", "e"]);
+  });
+
+  it("removes whole turns and keeps later comments on the same words", () => {
+    const segs = [seg(0, 0, "a b"), seg(1, 2000, "c d"), seg(0, 4000, "e f")];
+    const out = removeTurns(segs, [{ id: 1, word: 2, end: 3, body: "gone" }, { id: 2, word: 4, end: 5, body: "kept" }], [2]);
+    expect(out.segments.map((s) => s.words.map((w) => w.text).join(" "))).toEqual(["a b", "e f"]);
+    expect(out.comments).toEqual([{ id: 2, word: 2, end: 3, body: "kept" }]);
+  });
+
+  it("reassigns every segment of one turn to another speaker", () => {
+    const out = setTurnSpeaker([seg(1, 0, "a b"), seg(0, 1000, "c"), seg(0, 2000, "d"), seg(1, 3000, "e")], 2, 4);
+    expect(out.map((s) => s.speaker)).toEqual([1, 4, 4, 1]);
   });
 
   it("exports turns with names and times, and finds the spoken word", () => {

@@ -1,6 +1,8 @@
+pub mod blocks;
 pub mod db;
 pub mod demo;
 pub mod model;
+pub mod moving;
 pub mod recorder;
 pub mod settings;
 pub mod transcribe;
@@ -38,6 +40,7 @@ struct AppState {
     active: Mutex<Option<Active>>,
     starting: AtomicBool,
     downloading: AtomicBool,
+    undo: Mutex<Option<moving::Undo>>,
     jobs: mpsc::Sender<i64>,
     toggle_item: MenuItem<Wry>,
 }
@@ -243,22 +246,21 @@ fn worker(app: AppHandle, jobs: mpsc::Receiver<i64>) {
             .map(|r| r.languages)
             .unwrap_or_default();
         let dir = state.recording_dir(id);
-        let result = recorder::decode(
-            &recorder::binary(),
-            &dir.join("audio.m4a"),
-            &dir.join("decoded.f32"),
-        )
-        .and_then(|channels| {
-            transcribe::transcribe(
-                &state.model_path(),
-                &channels,
-                &languages,
-                &vocabulary,
-                |p| {
-                    let _ = app.emit("transcribe-progress", (id, p));
-                },
-            )
-        });
+        let tmp = dir.join("decoded.f32");
+        let result = recorder::decode_to(&recorder::binary(), &dir.join("audio.m4a"), &tmp)
+            .and_then(|frames| {
+                transcribe::transcribe_stream(
+                    &state.model_path(),
+                    frames,
+                    |a, b| recorder::read_range(&tmp, a, b),
+                    &languages,
+                    &vocabulary,
+                    |p| {
+                        let _ = app.emit("transcribe-progress", (id, p));
+                    },
+                )
+            });
+        let _ = std::fs::remove_file(&tmp);
         let mut db = state.db.lock().unwrap();
         let _ = match result {
             Ok(segments) => db::replace_segments(&mut db, id, &segments)
@@ -377,7 +379,8 @@ async fn audio_path(state: State<'_, AppState>, id: i64) -> Res<String> {
 }
 
 fn playback_file(dir: &std::path::Path) -> Res<String> {
-    let playback = dir.join("playback.m4a");
+    let playback = dir.join("playback2.m4a");
+    let _ = std::fs::remove_file(dir.join("playback.m4a"));
     if !playback.exists() {
         recorder::run(
             &recorder::binary(),
@@ -426,6 +429,13 @@ fn update_them(app: AppHandle, state: State<AppState>, id: i64, them: String) ->
 }
 
 #[tauri::command]
+fn set_speakers(app: AppHandle, state: State<AppState>, id: i64, speakers: Vec<String>) -> Res<()> {
+    db::set_speakers(&state.db.lock().unwrap(), id, &speakers).map_err(err)?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
 fn set_tag_color(app: AppHandle, state: State<AppState>, name: String, color: String) -> Res<()> {
     db::upsert_tag(&state.db.lock().unwrap(), &name, &color).map_err(err)?;
     changed(&app);
@@ -464,6 +474,11 @@ fn add_comment(
 }
 
 #[tauri::command]
+fn set_comments(state: State<AppState>, id: i64, comments: Vec<db::Comment>) -> Res<()> {
+    db::replace_comments(&mut state.db.lock().unwrap(), id, &comments).map_err(err)
+}
+
+#[tauri::command]
 fn delete_comment(state: State<AppState>, comment_id: i64) -> Res<()> {
     db::delete_comment(&state.db.lock().unwrap(), comment_id).map_err(err)
 }
@@ -478,6 +493,53 @@ fn set_segments(
     db::replace_segments(&mut state.db.lock().unwrap(), id, &segments).map_err(err)?;
     changed(&app);
     Ok(())
+}
+
+#[tauri::command]
+async fn move_blocks(
+    app: AppHandle,
+    id: i64,
+    ranges: Vec<(i64, i64)>,
+    target: Option<i64>,
+    copy: bool,
+    at_start: bool,
+    title: String,
+) -> Res<i64> {
+    let handle = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<AppState>();
+        let bin = recorder::binary();
+        let store = moving::Store {
+            db: &state.db,
+            dir: &state.dir,
+            bin: &bin,
+        };
+        moving::apply(&store, id, &ranges, target, copy, at_start, &title).map(|(target, undo)| {
+            *state.undo.lock().unwrap() = Some(undo);
+            target
+        })
+    })
+    .await
+    .map_err(err)?;
+    changed(&app);
+    result
+}
+
+#[tauri::command]
+async fn undo_move(app: AppHandle) -> Res<()> {
+    let state = app.state::<AppState>();
+    let undo = state.undo.lock().unwrap().take().ok_or("Nothing to undo")?;
+    let bin = recorder::binary();
+    let result = moving::undo(
+        &moving::Store {
+            db: &state.db,
+            dir: &state.dir,
+            bin: &bin,
+        },
+        undo,
+    );
+    changed(&app);
+    result
 }
 
 #[tauri::command]
@@ -681,6 +743,7 @@ pub fn run() {
                 active: Mutex::new(None),
                 starting: AtomicBool::new(false),
                 downloading: AtomicBool::new(false),
+                undo: Mutex::new(None),
                 jobs,
                 toggle_item,
             });
@@ -725,6 +788,7 @@ pub fn run() {
             create_draft,
             start_recording,
             update_them,
+            set_speakers,
             set_tag_color,
             rename_tag,
             delete_tag,
@@ -732,6 +796,9 @@ pub fn run() {
             add_comment,
             delete_comment,
             set_segments,
+            set_comments,
+            move_blocks,
+            undo_move,
             stop_recording,
             pause_recording,
             active_recording,

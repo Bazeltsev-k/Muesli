@@ -1,9 +1,12 @@
 import { createContext, useContext } from "react";
 import type { Lang, Strings } from "../i18n";
-import type { Level, Permissions, Recording, Settings, Tag, Theme } from "./api";
+import type { Permissions, Recording, Settings, Tag, Theme } from "./api";
 import type { TagOps } from "../components/Controls";
 
 export type View = { name: "home" } | { name: "rec"; id: number } | { name: "settings" };
+
+export type ToastAction = { label: string; run: () => void };
+export type Toast = { text: string; action?: ToastAction };
 
 export type Playback = { id: number; playing: boolean; rate: number; pinned: boolean };
 
@@ -26,13 +29,11 @@ export type AppCtx = {
   tags: Tag[];
   tagOps: TagOps;
   activeId: number | null;
-  level: Level;
   paused: boolean;
   setPaused: (p: boolean) => void;
   stop: () => void;
   progress: Record<number, number>;
   playback: Playback | null;
-  time: number;
   play: (id: number) => void;
   toggle: () => void;
   seek: (id: number, ms: number) => void;
@@ -42,7 +43,8 @@ export type AppCtx = {
   perms: Permissions | null;
   refreshPerms: () => void;
   startTour: () => void;
-  notify: (m: unknown) => void;
+  notify: (m: unknown, action?: ToastAction) => void;
+  bump: (id: number, n: number) => void;
   remove: (id: number) => void;
 };
 

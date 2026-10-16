@@ -1,19 +1,21 @@
 import { useRef, useState } from "react";
 import type { Strings } from "../i18n";
-import type { Level } from "../lib/api";
 import { fmt } from "../lib/util";
-import { Bars, Icon } from "./Controls";
+import { levelStore, useLevel } from "../lib/level";
+import { useClock } from "../lib/clock";
+import { Icon, LiveBars, LiveClock } from "./Controls";
 
-function MarkInput({ t, ms, onMark, style }: { t: Strings; ms: number; onMark: (body: string) => void; style?: React.CSSProperties }) {
+function MarkInput({ t, onMark, style }: { t: Strings; onMark: (body: string, ms: number) => void; style?: React.CSSProperties }) {
   const [mark, setMark] = useState("");
+  const ms = useLevel((l) => (mark ? 0 : Math.floor(l.ms / 1000) * 1000));
   const submit = () => {
     if (!mark.trim()) return;
-    onMark(mark.trim());
+    onMark(mark.trim(), levelStore.get().ms);
     setMark("");
   };
   return (
     <span className="markin" style={style}>
-      <input placeholder={`${t.markPh} ${fmt(ms)}`} value={mark} onChange={(e) => setMark(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+      <input placeholder={mark ? "" : `${t.markPh} ${fmt(ms)}`} value={mark} onChange={(e) => setMark(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
       <button className="enter" disabled={!mark.trim()} aria-label="Add" onClick={submit}>
         ↵
       </button>
@@ -21,16 +23,18 @@ function MarkInput({ t, ms, onMark, style }: { t: Strings; ms: number; onMark: (
   );
 }
 
-type LiveProps = { t: Strings; level: Level; paused: boolean; setPaused: (p: boolean) => void; onStop: () => void; onMark: (body: string) => void };
+type LiveProps = { t: Strings; paused: boolean; setPaused: (p: boolean) => void; onStop: () => void; onMark: (body: string, ms: number) => void };
 
-export function LivePill({ t, level, paused, setPaused, onStop, onMark }: LiveProps) {
+export function LivePill({ t, paused, setPaused, onStop, onMark }: LiveProps) {
   return (
     <div className="pill">
       <i className="live-dot" style={{ width: 9, height: 9 }} />
-      <span className="t">{fmt(level.ms)}</span>
-      <Bars level={paused ? 0 : Math.sqrt(level.mic) * 3} color="var(--me)" />
-      <Bars level={paused ? 0 : Math.sqrt(level.sys) * 3} color="var(--them)" />
-      <MarkInput t={t} ms={level.ms} onMark={onMark} style={{ flex: "none", width: 230 }} />
+      <span className="t">
+        <LiveClock />
+      </span>
+      <LiveBars channel="mic" paused={paused} color="var(--me)" />
+      <LiveBars channel="sys" paused={paused} color="var(--them)" />
+      <MarkInput t={t} onMark={onMark} style={{ flex: "none", width: 230 }} />
       <button className="pb" onClick={() => setPaused(!paused)}>
         {paused ? t.resume : t.pause}
       </button>
@@ -73,12 +77,14 @@ export function Pip({ t, title, them, onOpen, ...live }: LiveProps & { title: st
         </button>
       </div>
       <div className="mid">
-        <span className="t">{fmt(live.level.ms)}</span>
-        <Bars level={live.paused ? 0 : Math.sqrt(live.level.mic) * 3} color="var(--me)" />
-        <Bars level={live.paused ? 0 : Math.sqrt(live.level.sys) * 3} color="var(--them)" />
+        <span className="t">
+          <LiveClock />
+        </span>
+        <LiveBars channel="mic" paused={live.paused} color="var(--me)" />
+        <LiveBars channel="sys" paused={live.paused} color="var(--them)" />
         <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, opacity: 0.7 }}>{live.paused ? t.paused : t.recording}</span>
       </div>
-      <MarkInput t={t} ms={live.level.ms} onMark={live.onMark} />
+      <MarkInput t={t} onMark={live.onMark} />
       <div className="acts">
         <button className="pb" onClick={() => live.setPaused(!live.paused)}>
           {live.paused ? t.resume : t.pause}
@@ -92,12 +98,12 @@ export function Pip({ t, title, them, onOpen, ...live }: LiveProps & { title: st
   );
 }
 
-export function PlayPip({ t, title, them, duration, time, playing, stacked, onToggle, onSeek, onOpen, onClose }: {
+export function PlayPip({ t, id, title, them, duration, playing, stacked, onToggle, onSeek, onOpen, onClose }: {
   t: Strings;
   title: string;
   them: string;
   duration: number;
-  time: number;
+  id: number;
   playing: boolean;
   stacked: boolean;
   onToggle: () => void;
@@ -108,6 +114,7 @@ export function PlayPip({ t, title, them, duration, time, playing, stacked, onTo
   const { style, handlers } = useDrag(() => ({ x: window.innerWidth - 340, y: window.innerHeight - 150 - (stacked ? 245 : 0) }), 130);
   const bar = useRef<HTMLDivElement>(null);
   const dur = Math.max(1, duration);
+  const time = useClock(id, (ms) => Math.floor(ms / 250) * 250);
   const jump = (e: React.PointerEvent) => {
     const r = bar.current!.getBoundingClientRect();
     onSeek(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * dur);

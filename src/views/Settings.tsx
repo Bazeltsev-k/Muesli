@@ -7,7 +7,7 @@ import { TOUR } from "../i18n";
 import { useApp } from "../lib/app";
 import { api, type Device, type Permissions } from "../lib/api";
 import { useTauriEvent } from "../lib/util";
-import { LangToggles, Row, Toggle } from "../components/Controls";
+import { HomeFab, LangToggles, Row, Seg, Toggle } from "../components/Controls";
 
 export const SECTIONS = ["general", "recording", "transcription", "permissions", "updates"] as const;
 
@@ -135,9 +135,12 @@ export function SettingsView() {
 
   return (
     <div className="page">
-      <h1 className="title" style={{ fontSize: 30, marginBottom: -8 }}>
-        {t.settings}
-      </h1>
+      <div className="toprow">
+        <HomeFab />
+        <h1 className="title" style={{ fontSize: 30, margin: 0, width: "auto" }}>
+          {t.settings}
+        </h1>
+      </div>
       <div className="set">
         <section id="general">
           <h2>{L.general}</h2>
@@ -149,6 +152,16 @@ export function SettingsView() {
           </Row>
           <Row label={L.hotkey} hint={L.hotkeyHint}>
             <HotkeyInput value={settings.hotkey} onSave={(hotkey) => updateSettings({ hotkey })} />
+          </Row>
+          <Row label={L.layout} hint={L.layoutHint}>
+            <Seg
+              value={settings.ui?.layout ?? "columns"}
+              options={[
+                ["columns", L.layoutCols],
+                ["stacked", L.layoutStack],
+              ]}
+              onChange={(layout) => updateSettings({ ui: { ...settings.ui, layout } })}
+            />
           </Row>
           <Row label={L.login} hint={L.loginHint}>
             <Toggle on={autostart} set={(on) => (on ? enable() : disable()).then(() => setAutostart(on)).catch(notify)} />
@@ -215,7 +228,7 @@ export function SettingsView() {
               )}
             </Row>
           </div>
-          <Row label={L.defLangs} hint={t.langHint}>
+          <Row label={L.defLangs} hint={L.defLangsHint}>
             <LangToggles value={settings.languages} onChange={(languages) => updateSettings({ languages })} />
           </Row>
           <Row label={L.autoTr} hint={L.autoTrHint}>

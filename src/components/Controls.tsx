@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LANGS, TAG_COLORS, type Strings } from "../i18n";
 import type { Tag } from "../lib/api";
-import { useOutside } from "../lib/util";
+import { fmt, useOutside } from "../lib/util";
+import { useLevel } from "../lib/level";
+import { useApp } from "../lib/app";
 
 export const Icon = {
   search: (
@@ -32,6 +34,11 @@ export const Icon = {
   play: (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
       <path d="M3 1.8v10.4c0 .6.7 1 1.2.6l8-5.2a.7.7 0 0 0 0-1.2l-8-5.2C3.7.8 3 1.2 3 1.8z" />
+    </svg>
+  ),
+  pencil: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+      <path d="M10.8 2.7a1.6 1.6 0 0 1 2.3 2.3L5.6 12.5 2.5 13.5l1-3.1z" />
     </svg>
   ),
   pause: (
@@ -74,10 +81,10 @@ export function HoldDelete({ t, onConfirm, label, holdLabel, className = "btn" }
   );
 }
 
-export function LangToggles({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+export function LangToggles({ value, onChange, options }: { value: string[]; onChange: (v: string[]) => void; options?: string[] }) {
   return (
     <span className="langs" role="group">
-      {LANGS.map(([code, name]) => {
+      {LANGS.filter(([code]) => !options || options.includes(code) || value.includes(code)).map(([code, name]) => {
         const on = value.includes(code);
         return (
           <button
@@ -100,6 +107,28 @@ export function LangToggles({ value, onChange }: { value: string[]; onChange: (v
   );
 }
 
+export function HomeFab() {
+  const { t, go } = useApp();
+  return (
+    <button className="homefab" onClick={() => go({ name: "home" })} aria-label={t.home}>
+      <span className="arr">←</span>
+      {t.home}
+    </button>
+  );
+}
+
+export function Seg<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <span className="seg" role="radiogroup">
+      {options.map(([v, label]) => (
+        <button key={v} role="radio" aria-checked={value === v} onClick={() => onChange(v)}>
+          {label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 export const Row = ({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children?: ReactNode }) => (
   <div className="row">
     <div className="l">
@@ -116,10 +145,19 @@ export function Bars({ level, color }: { level: number; color: string }) {
   return (
     <span className="bars">
       {[0.5, 0.85, 1, 0.7, 0.4].map((k, i) => (
-        <i key={i} style={{ background: color, height: Math.max(3, Math.min(1, level) * k * 22) + "px" }} />
+        <i key={i} style={{ background: color, transform: `scaleY(${Math.max(3, Math.min(1, level) * k * 22) / 22})` }} />
       ))}
     </span>
   );
+}
+
+export function LiveBars({ channel, paused, color }: { channel: "mic" | "sys"; paused: boolean; color: string }) {
+  const level = useLevel((l) => (paused ? 0 : Math.round(Math.sqrt(l[channel]) * 60) / 20));
+  return <Bars level={level} color={color} />;
+}
+
+export function LiveClock() {
+  return <>{fmt(useLevel((l) => Math.floor(l.ms / 1000)) * 1000)}</>;
 }
 
 export function AutoNote({ className, placeholder, value, onChange }: { className: string; placeholder: string; value: string; onChange: (v: string) => void }) {
@@ -127,8 +165,19 @@ export function AutoNote({ className, placeholder, value, onChange }: { classNam
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = el.scrollHeight + "px";
+    const fit = () => {
+      el.style.height = "auto";
+      el.style.height = el.scrollHeight + "px";
+    };
+    fit();
+    let width = el.offsetWidth;
+    const watch = new ResizeObserver(() => {
+      if (el.offsetWidth === width) return;
+      width = el.offsetWidth;
+      fit();
+    });
+    watch.observe(el);
+    return () => watch.disconnect();
   }, [value]);
   return <textarea ref={ref} className={className} placeholder={placeholder} value={value} rows={1} onChange={(e) => onChange(e.target.value)} />;
 }

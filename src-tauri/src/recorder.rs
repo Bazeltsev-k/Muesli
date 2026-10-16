@@ -55,21 +55,47 @@ pub fn send(stdin: &mut ChildStdin, command: &str) {
 }
 
 pub fn decode(bin: &Path, audio: &Path, tmp: &Path) -> Result<[Vec<f32>; 2], String> {
+    let frames = decode_to(bin, audio, tmp)?;
+    let channels = read_range(tmp, 0, frames);
+    let _ = std::fs::remove_file(tmp);
+    channels
+}
+
+pub fn decode_to(bin: &Path, audio: &Path, tmp: &Path) -> Result<usize, String> {
     run(
         bin,
         &["decode", &audio.to_string_lossy(), &tmp.to_string_lossy()],
     )?;
-    let bytes = std::fs::read(tmp).map_err(|e| e.to_string());
-    let _ = std::fs::remove_file(tmp);
-    let bytes = bytes?;
-    let samples: Vec<f32> = bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|b| f32::from_le_bytes(*b))
-        .collect();
-    Ok([
-        samples.iter().step_by(2).copied().collect(),
-        samples.iter().skip(1).step_by(2).copied().collect(),
-    ])
+    std::fs::metadata(tmp)
+        .map(|m| m.len() as usize / 8)
+        .map_err(|e| e.to_string())
+}
+
+pub fn read_range(path: &Path, start: usize, end: usize) -> Result<[Vec<f32>; 2], String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(start as u64 * 8))
+        .map_err(|e| e.to_string())?;
+    let mut bytes = vec![0u8; end.saturating_sub(start) * 8];
+    file.read_exact(&mut bytes).map_err(|e| e.to_string())?;
+    let mut channels = [
+        Vec::with_capacity(bytes.len() / 8),
+        Vec::with_capacity(bytes.len() / 8),
+    ];
+    for frame in bytes.as_chunks::<8>().0 {
+        channels[0].push(f32::from_le_bytes(frame[..4].try_into().unwrap()));
+        channels[1].push(f32::from_le_bytes(frame[4..].try_into().unwrap()));
+    }
+    Ok(channels)
+}
+
+pub fn splice(bin: &Path, out: &Path, pieces: &[Value]) -> Result<i64, String> {
+    let spec = out.with_extension("splice.json");
+    std::fs::write(&spec, Value::from(pieces.to_vec()).to_string()).map_err(|e| e.to_string())?;
+    let result = run(
+        bin,
+        &["splice", &out.to_string_lossy(), &spec.to_string_lossy()],
+    );
+    let _ = std::fs::remove_file(&spec);
+    result.map(|v| v["ms"].as_i64().unwrap_or(0))
 }

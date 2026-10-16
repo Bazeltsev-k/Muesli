@@ -148,6 +148,10 @@ final class Recorder {
     var sysSum: Float = 0
     var levelFrames = 0
     var callbacks = 0
+    var logMic: Float = 0
+    var logSys: Float = 0
+    var logFrames = 0
+    var logZeros = 0
 
     init(dir: URL, micUID: String?, system: Bool) {
         self.dir = dir
@@ -180,6 +184,14 @@ final class Recorder {
         var addr = address(kAudioDevicePropertyNominalSampleRate)
         var size = UInt32(MemoryLayout<Double>.size)
         AudioObjectGetPropertyData(aggID, &addr, 0, nil, &size, &rate)
+        if let micID = deviceID(mic) {
+            var busy: UInt32 = 0
+            var busyAddr = address(kAudioDevicePropertyDeviceIsRunningSomewhere)
+            var busySize = UInt32(MemoryLayout<UInt32>.size)
+            AudioObjectGetPropertyData(micID, &busyAddr, 0, nil, &busySize, &busy)
+            let fourcc = withUnsafeBytes(of: transportType(micID).bigEndian) { String(decoding: $0, as: UTF8.self) }
+            log("mic transport=\(fourcc) inUseElsewhere=\(busy) default=\(defaultInputUID() ?? "none")")
+        }
         log("mic=\(mic) system=\(system) aggregate=\(aggID) tap=\(tapID) rate=\(rate) inputStreams=\(inputChannels(aggID))")
         let meta = try! JSONSerialization.data(withJSONObject: ["rate": rate])
         try! meta.write(to: dir.appendingPathComponent("raw.json"))
@@ -203,16 +215,29 @@ final class Recorder {
             }
             var out = [Int16](repeating: 0, count: count * 2)
             for i in 0..<count {
-                let m = mic[i * micStride]
+                var m: Float = 0
+                for c in 0..<micStride { m += mic[i * micStride + c] }
+                m /= Float(micStride)
                 let s = sys?[i * sysStride] ?? 0
                 out[i * 2] = Int16(max(-1, min(1, m)) * 32767)
                 out[i * 2 + 1] = Int16(max(-1, min(1, s)) * 32767)
                 micSum += m * m
                 sysSum += s * s
+                logMic += m * m
+                logSys += s * s
+                if m == 0 { logZeros += 1 }
             }
+            logFrames += count
             out.withUnsafeBytes { raw.write(Data($0)) }
             frames += count
             levelFrames += count
+            if Double(logFrames) >= rate * 10 {
+                log(String(format: "t=%ds mic=%.5f sys=%.5f micZeros=%d", frames / Int(rate), sqrt(logMic / Float(logFrames)), sqrt(logSys / Float(logFrames)), logZeros))
+                logMic = 0
+                logSys = 0
+                logFrames = 0
+                logZeros = 0
+            }
             if Double(levelFrames) >= rate / 10 {
                 emit(["type": "level", "mic": sqrt(micSum / Float(levelFrames)), "sys": sqrt(sysSum / Float(levelFrames)), "ms": frames * 1000 / Int(rate)])
                 micSum = 0
@@ -321,11 +346,42 @@ func record(_ dir: URL, micUID: String?, system: Bool) -> Never {
     exit(0)
 }
 
+func levelGains(_ file: AVAudioFile) throws -> [[Float]] {
+    let format = file.processingFormat
+    let frame = AVAudioFrameCount(format.sampleRate * 0.03)
+    let block = 333
+    let channels = Int(format.channelCount)
+    var rms = [[Float]](repeating: [], count: channels)
+    let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frame)!
+    file.framePosition = 0
+    while file.framePosition < file.length {
+        try file.read(into: buffer, frameCount: frame)
+        let n = Int(buffer.frameLength)
+        if n == 0 { break }
+        for c in 0..<channels {
+            var sum: Float = 0
+            for i in 0..<n { sum += buffer.floatChannelData![c][i] * buffer.floatChannelData![c][i] }
+            rms[c].append(sqrt(sum / Float(n)))
+        }
+    }
+    file.framePosition = 0
+    return rms.map { frames in
+        stride(from: 0, to: frames.count, by: block).map { start in
+            let sorted = frames[start..<min(frames.count, start + block)].sorted()
+            let low = sorted[sorted.count / 5]
+            let high = sorted[sorted.count * 49 / 50]
+            return high >= 0.0008 && high > low * 4 ? min(30, max(1, 0.05 / high)) : 1
+        }
+    }
+}
+
 func mixdown(_ input: URL, _ output: URL) {
     do {
         let file = try AVAudioFile(forReading: input)
         let format = file.processingFormat
         let rate = format.sampleRate
+        let gains = try levelGains(file)
+        let blockFrames = Double(Int(rate * 0.03) * 333)
         var settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate, AVNumberOfChannelsKey: 2]
         if rate >= 32000 { settings[AVEncoderBitRateKey] = 96000 }
         let tmp = output.deletingLastPathComponent().appendingPathComponent("playback.tmp.m4a")
@@ -333,18 +389,27 @@ func mixdown(_ input: URL, _ output: URL) {
         let out = try AVAudioFile(forWriting: tmp, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         let inBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16384)!
         let outBuffer = AVAudioPCMBuffer(pcmFormat: out.processingFormat, frameCapacity: 16384)!
+        let channels = Int(format.channelCount)
+        var position = 0
         while file.framePosition < file.length {
             try file.read(into: inBuffer, frameCount: AVAudioFrameCount(min(16384, file.length - file.framePosition)))
             let n = Int(inBuffer.frameLength)
             if n == 0 { break }
-            let channels = Int(format.channelCount)
             for i in 0..<n {
+                let pos = max(0, Double(position + i) / blockFrames - 0.5)
                 var sum: Float = 0
-                for c in 0..<channels { sum += inBuffer.floatChannelData![c][i] }
+                for c in 0..<channels {
+                    let g = gains[c]
+                    let k = min(Int(pos), g.count - 1)
+                    let next = g[min(k + 1, g.count - 1)]
+                    let gain = g[k] + (next - g[k]) * Float(min(1, pos - Double(k)))
+                    sum += inBuffer.floatChannelData![c][i] * gain
+                }
                 let v = max(-1, min(1, sum))
                 outBuffer.floatChannelData![0][i] = v
                 outBuffer.floatChannelData![1][i] = v
             }
+            position += n
             outBuffer.frameLength = AVAudioFrameCount(n)
             try out.write(from: outBuffer)
         }
@@ -389,6 +454,77 @@ func decode(_ input: URL, _ output: URL) {
     }
 }
 
+func splice(_ output: URL, _ specURL: URL) {
+    do {
+        guard let spec = try JSONSerialization.jsonObject(with: Data(contentsOf: specURL)) as? [[String: Any]] else { fail("Bad splice spec") }
+        var rate: Double = 48000
+        if let first = spec.compactMap({ $0["file"] as? String }).first {
+            rate = try AVAudioFile(forReading: URL(fileURLWithPath: first)).processingFormat.sampleRate
+        }
+        var settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate, AVNumberOfChannelsKey: 2]
+        if rate >= 32000 { settings[AVEncoderBitRateKey] = 96000 }
+        let tmp = output.deletingPathExtension().appendingPathExtension("tmp.m4a")
+        try? FileManager.default.removeItem(at: tmp)
+        let out = try AVAudioFile(forWriting: tmp, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let format = out.processingFormat
+        let chunk: AVAudioFrameCount = 16384
+        let outBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunk * 4)!
+        var written = 0
+        for piece in spec {
+            if let ms = piece["silence"] as? Double {
+                var left = AVAudioFrameCount(ms / 1000 * rate)
+                while left > 0 {
+                    let n = min(left, outBuffer.frameCapacity)
+                    for c in 0..<Int(format.channelCount) { memset(outBuffer.floatChannelData![c], 0, Int(n) * 4) }
+                    outBuffer.frameLength = n
+                    try out.write(from: outBuffer)
+                    written += Int(n)
+                    left -= n
+                }
+                continue
+            }
+            guard let path = piece["file"] as? String, let startMs = piece["start"] as? Double, let endMs = piece["end"] as? Double else { fail("Bad splice piece") }
+            let file = try AVAudioFile(forReading: URL(fileURLWithPath: path))
+            let inFormat = file.processingFormat
+            let fileRate = inFormat.sampleRate
+            let end = min(file.length, AVAudioFramePosition(endMs / 1000 * fileRate))
+            file.framePosition = min(end, max(0, AVAudioFramePosition(startMs / 1000 * fileRate)))
+            let inBuffer = AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: chunk)!
+            let converter = inFormat == format ? nil : AVAudioConverter(from: inFormat, to: format)
+            while file.framePosition < end {
+                try file.read(into: inBuffer, frameCount: AVAudioFrameCount(min(AVAudioFramePosition(chunk), end - file.framePosition)))
+                if inBuffer.frameLength == 0 { break }
+                guard let converter else {
+                    try out.write(from: inBuffer)
+                    written += Int(inBuffer.frameLength)
+                    continue
+                }
+                var fed = false
+                var error: NSError?
+                converter.convert(to: outBuffer, error: &error) { _, status in
+                    if fed {
+                        status.pointee = .noDataNow
+                        return nil
+                    }
+                    fed = true
+                    status.pointee = .haveData
+                    return inBuffer
+                }
+                if let error { throw error }
+                if outBuffer.frameLength > 0 {
+                    try out.write(from: outBuffer)
+                    written += Int(outBuffer.frameLength)
+                }
+            }
+        }
+        try? FileManager.default.removeItem(at: output)
+        try FileManager.default.moveItem(at: tmp, to: output)
+        emit(["type": "done", "ms": Int((Double(written) * 1000 / rate).rounded())])
+    } catch {
+        fail("Moving audio failed: \(error.localizedDescription)")
+    }
+}
+
 let args = CommandLine.arguments
 switch args.count > 1 ? args[1] : "" {
 case "devices":
@@ -404,8 +540,10 @@ case "finalize" where args.count > 2:
     finalize(URL(fileURLWithPath: args[2]))
 case "mixdown" where args.count > 3:
     mixdown(URL(fileURLWithPath: args[2]), URL(fileURLWithPath: args[3]))
+case "splice" where args.count > 3:
+    splice(URL(fileURLWithPath: args[2]), URL(fileURLWithPath: args[3]))
 case "decode" where args.count > 3:
     decode(URL(fileURLWithPath: args[2]), URL(fileURLWithPath: args[3]))
 default:
-    fail("usage: muesli-recorder devices|permissions|request <kind>|record <dir> [--mic uid] [--no-system]|finalize <dir>|decode <in> <out>|mixdown <in> <out>")
+    fail("usage: muesli-recorder devices|permissions|request <kind>|record <dir> [--mic uid] [--no-system]|finalize <dir>|decode <in> <out>|mixdown <in> <out>|splice <out> <spec.json>")
 }

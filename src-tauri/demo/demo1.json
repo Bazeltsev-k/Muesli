@@ -1,380 +1,403 @@
 {
- "title": "Demo: weekly sync",
- "them": "Olena",
- "languages": [
-  "en",
-  "uk",
-  "ru"
- ],
- "minutesAgo": 20,
- "tags": [
-  {
-   "name": "demo",
-   "color": "#8D8D86"
-  },
-  {
-   "name": "release",
-   "color": "#E5484D"
-  }
- ],
- "note": "Ship 0.2 on Thursday if both player bugs are fixed.",
- "notes": [
-  {
-   "atMs": 9000,
-   "body": "Ask which two bugs"
-  },
-  {
-   "atMs": 31000,
-   "body": "Demo moved to Thursday"
-  }
- ],
- "comments": [
-  {
-   "word": 20,
-   "end": 21,
-   "body": "Seek bug and the karaoke drift"
-  }
- ],
- "segments": [
-  {
-   "speaker": 0,
-   "startMs": 260,
-   "endMs": 5120,
-   "lang": "en",
-   "words": [
+  "title": "Demo: weekly sync",
+  "them": "Olena",
+  "languages": [
+    "en",
+    "uk"
+  ],
+  "minutesAgo": 20,
+  "tags": [
     {
-     "startMs": 260,
-     "text": "Hello"
+      "name": "demo",
+      "color": "#8D8D86"
     },
     {
-     "startMs": 780,
-     "text": "everyone,"
-    },
-    {
-     "startMs": 1500,
-     "text": "thanks"
-    },
-    {
-     "startMs": 1680,
-     "text": "for"
-    },
-    {
-     "startMs": 2020,
-     "text": "joining"
-    },
-    {
-     "startMs": 2220,
-     "text": "the"
-    },
-    {
-     "startMs": 2520,
-     "text": "weekly"
-    },
-    {
-     "startMs": 2920,
-     "text": "sync."
-    },
-    {
-     "startMs": 3460,
-     "text": "Let's"
-    },
-    {
-     "startMs": 3780,
-     "text": "start"
-    },
-    {
-     "startMs": 3960,
-     "text": "with"
-    },
-    {
-     "startMs": 4120,
-     "text": "the"
-    },
-    {
-     "startMs": 4460,
-     "text": "release"
-    },
-    {
-     "startMs": 4880,
-     "text": "status."
+      "name": "release",
+      "color": "#E5484D"
     }
-   ]
-  },
-  {
-   "speaker": 1,
-   "startMs": 6370,
-   "endMs": 13980,
-   "lang": "ru",
-   "words": [
+  ],
+  "note": "Ship 0.2 on Thursday if both player bugs are fixed.",
+  "notes": [
     {
-     "startMs": 6370,
-     "text": "Привет,"
+      "atMs": 9000,
+      "body": "Ask which two bugs"
     },
     {
-     "startMs": 6930,
-     "text": "релиз"
-    },
-    {
-     "startMs": 7530,
-     "text": "почти"
-    },
-    {
-     "startMs": 7950,
-     "text": "готов,"
-    },
-    {
-     "startMs": 8530,
-     "text": "осталось"
-    },
-    {
-     "startMs": 9090,
-     "text": "исправить"
-    },
-    {
-     "startMs": 9530,
-     "text": "две"
-    },
-    {
-     "startMs": 9810,
-     "text": "ошибки"
-    },
-    {
-     "startMs": 10150,
-     "text": "в"
-    },
-    {
-     "startMs": 10270,
-     "text": "плеере."
-    },
-    {
-     "startMs": 11050,
-     "text": "Первая"
-    },
-    {
-     "startMs": 11310,
-     "text": "с"
-    },
-    {
-     "startMs": 11510,
-     "text": "перемоткой,"
-    },
-    {
-     "startMs": 12390,
-     "text": "вторая"
-    },
-    {
-     "startMs": 12710,
-     "text": "с"
-    },
-    {
-     "startMs": 12890,
-     "text": "подсветкой"
-    },
-    {
-     "startMs": 13670,
-     "text": "слов."
+      "atMs": 31000,
+      "body": "Demo moved to Thursday"
     }
-   ]
-  },
-  {
-   "speaker": 0,
-   "startMs": 15240,
-   "endMs": 23720,
-   "lang": "uk",
-   "words": [
+  ],
+  "comments": [
     {
-     "startMs": 15240,
-     "text": "Добре,"
-    },
-    {
-     "startMs": 15940,
-     "text": "тоді"
-    },
-    {
-     "startMs": 16620,
-     "text": "давайте"
-    },
-    {
-     "startMs": 16860,
-     "text": "перенесемо"
-    },
-    {
-     "startMs": 17500,
-     "text": "демо"
-    },
-    {
-     "startMs": 17880,
-     "text": "на"
-    },
-    {
-     "startMs": 18120,
-     "text": "четвер."
-    },
-    {
-     "startMs": 18760,
-     "text": "І"
-    },
-    {
-     "startMs": 19040,
-     "text": "ще"
-    },
-    {
-     "startMs": 19300,
-     "text": "одне,"
-    },
-    {
-     "startMs": 19960,
-     "text": "експорт"
-    },
-    {
-     "startMs": 20600,
-     "text": "у"
-    },
-    {
-     "startMs": 20720,
-     "text": "текстовий"
-    },
-    {
-     "startMs": 21380,
-     "text": "файл"
-    },
-    {
-     "startMs": 21700,
-     "text": "має"
-    },
-    {
-     "startMs": 22000,
-     "text": "зберігати"
-    },
-    {
-     "startMs": 22660,
-     "text": "імена"
-    },
-    {
-     "startMs": 23080,
-     "text": "учасників."
+      "word": 20,
+      "end": 21,
+      "body": "Seek bug and the karaoke drift"
     }
-   ]
-  },
-  {
-   "speaker": 1,
-   "startMs": 24990,
-   "endMs": 28950,
-   "lang": "ru",
-   "words": [
+  ],
+  "segments": [
     {
-     "startMs": 24990,
-     "text": "Да,"
+      "speaker": 0,
+      "startMs": 280,
+      "endMs": 4960,
+      "lang": "en",
+      "words": [
+        {
+          "startMs": 280,
+          "text": "Hello"
+        },
+        {
+          "startMs": 800,
+          "text": "everyone,"
+        },
+        {
+          "startMs": 1500,
+          "text": "thanks"
+        },
+        {
+          "startMs": 1680,
+          "text": "for"
+        },
+        {
+          "startMs": 2020,
+          "text": "joining"
+        },
+        {
+          "startMs": 2220,
+          "text": "the"
+        },
+        {
+          "startMs": 2540,
+          "text": "weekly"
+        },
+        {
+          "startMs": 2920,
+          "text": "sync."
+        },
+        {
+          "startMs": 3460,
+          "text": "Let's"
+        },
+        {
+          "startMs": 3780,
+          "text": "start"
+        },
+        {
+          "startMs": 3960,
+          "text": "with"
+        },
+        {
+          "startMs": 4120,
+          "text": "the"
+        },
+        {
+          "startMs": 4460,
+          "text": "release"
+        },
+        {
+          "startMs": 4880,
+          "text": "status."
+        }
+      ]
     },
     {
-     "startMs": 25570,
-     "text": "четверг"
+      "speaker": 1,
+      "startMs": 6210,
+      "endMs": 15660,
+      "lang": "uk",
+      "words": [
+        {
+          "startMs": 6210,
+          "text": "Привіт,"
+        },
+        {
+          "startMs": 6950,
+          "text": "реліз"
+        },
+        {
+          "startMs": 7430,
+          "text": "майже"
+        },
+        {
+          "startMs": 7970,
+          "text": "готовий,"
+        },
+        {
+          "startMs": 8650,
+          "text": "залишилося"
+        },
+        {
+          "startMs": 9430,
+          "text": "виправити"
+        },
+        {
+          "startMs": 10090,
+          "text": "дві"
+        },
+        {
+          "startMs": 10370,
+          "text": "помилки"
+        },
+        {
+          "startMs": 10810,
+          "text": "в"
+        },
+        {
+          "startMs": 10930,
+          "text": "плеєрі."
+        },
+        {
+          "startMs": 11790,
+          "text": "Перша"
+        },
+        {
+          "startMs": 12150,
+          "text": "з"
+        },
+        {
+          "startMs": 12450,
+          "text": "перемотуванням,"
+        },
+        {
+          "startMs": 13790,
+          "text": "друга"
+        },
+        {
+          "startMs": 13990,
+          "text": "з"
+        },
+        {
+          "startMs": 14150,
+          "text": "підсвічуванням"
+        },
+        {
+          "startMs": 15230,
+          "text": "слів."
+        }
+      ]
     },
     {
-     "startMs": 26050,
-     "text": "подходит,"
+      "speaker": 0,
+      "startMs": 16970,
+      "endMs": 20470,
+      "lang": "en",
+      "words": [
+        {
+          "startMs": 16970,
+          "text": "Okay,"
+        },
+        {
+          "startMs": 17610,
+          "text": "then"
+        },
+        {
+          "startMs": 17830,
+          "text": "let's"
+        },
+        {
+          "startMs": 18110,
+          "text": "move"
+        },
+        {
+          "startMs": 18270,
+          "text": "the"
+        },
+        {
+          "startMs": 18570,
+          "text": "demo"
+        },
+        {
+          "startMs": 18770,
+          "text": "to"
+        },
+        {
+          "startMs": 19130,
+          "text": "Thursday."
+        },
+        {
+          "startMs": 19710,
+          "text": "And"
+        },
+        {
+          "startMs": 19930,
+          "text": "one"
+        },
+        {
+          "startMs": 20130,
+          "text": "more"
+        },
+        {
+          "startMs": 20430,
+          "text": "thing,"
+        }
+      ]
     },
     {
-     "startMs": 26990,
-     "text": "экспорт"
+      "speaker": 0,
+      "startMs": 20850,
+      "endMs": 23430,
+      "lang": "en",
+      "words": [
+        {
+          "startMs": 20850,
+          "text": "the"
+        },
+        {
+          "startMs": 21150,
+          "text": "text"
+        },
+        {
+          "startMs": 21610,
+          "text": "export"
+        },
+        {
+          "startMs": 21870,
+          "text": "should"
+        },
+        {
+          "startMs": 22150,
+          "text": "keep"
+        },
+        {
+          "startMs": 22310,
+          "text": "the"
+        },
+        {
+          "startMs": 22670,
+          "text": "speaker"
+        },
+        {
+          "startMs": 23090,
+          "text": "names."
+        }
+      ]
     },
     {
-     "startMs": 27290,
-     "text": "я"
+      "speaker": 1,
+      "startMs": 24500,
+      "endMs": 28950,
+      "lang": "uk",
+      "words": [
+        {
+          "startMs": 24500,
+          "text": "Так,"
+        },
+        {
+          "startMs": 25040,
+          "text": "четвер"
+        },
+        {
+          "startMs": 25500,
+          "text": "підходить."
+        },
+        {
+          "startMs": 26420,
+          "text": "Експорт"
+        },
+        {
+          "startMs": 27040,
+          "text": "я"
+        },
+        {
+          "startMs": 27360,
+          "text": "перевірю"
+        },
+        {
+          "startMs": 27740,
+          "text": "сьогодні"
+        },
+        {
+          "startMs": 28220,
+          "text": "ввечері."
+        }
+      ]
     },
     {
-     "startMs": 27590,
-     "text": "проверю"
+      "speaker": 0,
+      "startMs": 30040,
+      "endMs": 32220,
+      "lang": "en",
+      "words": [
+        {
+          "startMs": 30040,
+          "text": "Great,"
+        },
+        {
+          "startMs": 30520,
+          "text": "then"
+        },
+        {
+          "startMs": 30680,
+          "text": "I'll"
+        },
+        {
+          "startMs": 30980,
+          "text": "write"
+        },
+        {
+          "startMs": 31120,
+          "text": "the"
+        },
+        {
+          "startMs": 31460,
+          "text": "release"
+        },
+        {
+          "startMs": 31720,
+          "text": "notes"
+        },
+        {
+          "startMs": 31940,
+          "text": "and"
+        },
+        {
+          "startMs": 32180,
+          "text": "send"
+        }
+      ]
     },
     {
-     "startMs": 28130,
-     "text": "сегодня"
+      "speaker": 0,
+      "startMs": 32340,
+      "endMs": 33140,
+      "lang": "en",
+      "words": [
+        {
+          "startMs": 32340,
+          "text": "them"
+        },
+        {
+          "startMs": 32620,
+          "text": "after"
+        },
+        {
+          "startMs": 32840,
+          "text": "the"
+        },
+        {
+          "startMs": 33120,
+          "text": "meeting."
+        }
+      ]
     },
     {
-     "startMs": 28450,
-     "text": "вечером."
+      "speaker": 1,
+      "startMs": 34330,
+      "endMs": 35850,
+      "lang": "uk",
+      "words": [
+        {
+          "startMs": 34330,
+          "text": "Чудово,"
+        },
+        {
+          "startMs": 35230,
+          "text": "до"
+        },
+        {
+          "startMs": 35470,
+          "text": "четверга."
+        }
+      ]
     }
-   ]
-  },
-  {
-   "speaker": 0,
-   "startMs": 30070,
-   "endMs": 33150,
-   "lang": "en",
-   "words": [
-    {
-     "startMs": 30070,
-     "text": "Great,"
-    },
-    {
-     "startMs": 30550,
-     "text": "then"
-    },
-    {
-     "startMs": 30710,
-     "text": "I'll"
-    },
-    {
-     "startMs": 31010,
-     "text": "write"
-    },
-    {
-     "startMs": 31130,
-     "text": "the"
-    },
-    {
-     "startMs": 31470,
-     "text": "release"
-    },
-    {
-     "startMs": 31750,
-     "text": "notes"
-    },
-    {
-     "startMs": 31950,
-     "text": "and"
-    },
-    {
-     "startMs": 32190,
-     "text": "send"
-    },
-    {
-     "startMs": 32370,
-     "text": "them"
-    },
-    {
-     "startMs": 32650,
-     "text": "after"
-    },
-    {
-     "startMs": 32850,
-     "text": "the"
-    },
-    {
-     "startMs": 33130,
-     "text": "meeting."
-    }
-   ]
-  },
-  {
-   "speaker": 1,
-   "startMs": 34380,
-   "endMs": 35720,
-   "lang": "ru",
-   "words": [
-    {
-     "startMs": 34380,
-     "text": "Отлично,"
-    },
-    {
-     "startMs": 35180,
-     "text": "до"
-    },
-    {
-     "startMs": 35400,
-     "text": "четверга."
-    }
-   ]
-  }
- ]
+  ]
 }

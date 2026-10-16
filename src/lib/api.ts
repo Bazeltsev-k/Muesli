@@ -13,6 +13,7 @@ export type Recording = {
   tags: string[];
   languages: string[];
   them: string;
+  speakers: string[];
 };
 
 export type Word = { startMs: number; text: string };
@@ -22,7 +23,8 @@ export type Comment = { id: number; word: number; end: number; body: string };
 export type Tag = { name: string; color: string };
 
 export type Theme = { h: number; c: number; bh: number; bc: number; grain: number; bgrain: number; depth: number; lift: number; mode: "light" | "auto" | "dark" };
-export type Ui = { theme?: Partial<Theme>; lang?: "en" | "uk" | "ru"; toured?: boolean };
+export type Folded = { notes: boolean; transcript: boolean };
+export type Ui = { theme?: Partial<Theme>; lang?: "en" | "uk" | "ru"; toured?: boolean; layout?: "columns" | "stacked"; folded?: Folded; split?: number };
 
 export type Settings = {
   displayName: string;
@@ -50,6 +52,9 @@ export const api = {
   getRecording: (id: number) => invoke<Recording | null>("get_recording", { id }),
   getSegments: (id: number) => invoke<Segment[]>("get_segments", { id }),
   setSegments: (id: number, segments: Segment[]) => invoke<void>("set_segments", { id, segments }),
+  setComments: (id: number, comments: Comment[]) => invoke<void>("set_comments", { id, comments }),
+  moveBlocks: (id: number, ranges: [number, number][], target: number | null, copy: boolean, atStart: boolean, title: string) => invoke<number>("move_blocks", { id, ranges, target, copy, atStart, title }),
+  undoMove: () => invoke<void>("undo_move"),
   listNotes: (id: number) => invoke<Note[]>("list_notes", { id }),
   addNote: (id: number, atMs: number, body: string) => invoke<Note>("add_note", { id, atMs, body }),
   listComments: (id: number) => invoke<Comment[]>("list_comments", { id }),
@@ -58,6 +63,7 @@ export const api = {
   updateTitle: (id: number, title: string) => invoke<void>("update_title", { id, title }),
   updateNote: (id: number, note: string) => invoke<void>("update_note", { id, note }),
   updateThem: (id: number, them: string) => invoke<void>("update_them", { id, them }),
+  setSpeakers: (id: number, speakers: string[]) => invoke<void>("set_speakers", { id, speakers }),
   setLanguages: (id: number, languages: string[]) => invoke<void>("set_languages", { id, languages }),
   setTags: (id: number, tags: string[]) => invoke<void>("set_tags", { id, tags }),
   allTags: () => invoke<Tag[]>("all_tags"),

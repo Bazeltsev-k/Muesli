@@ -27,6 +27,43 @@ const PROMPTS: [(&str, &str); 3] = [
 const PACK_MAX: usize = RATE * 28;
 const PACK_GAP: usize = RATE * 3 / 10;
 
+const LEVEL_BLOCK: usize = 10_000 / 30;
+const LEVEL_TARGET: f32 = 0.05;
+const LEVEL_MAX_GAIN: f32 = 30.0;
+const LEVEL_MIN_SPEECH: f32 = 0.0008;
+
+pub fn level(samples: &mut [f32]) {
+    let rms: Vec<f32> = samples
+        .chunks(FRAME)
+        .map(|c| (c.iter().map(|x| x * x).sum::<f32>() / c.len() as f32).sqrt())
+        .collect();
+    if rms.is_empty() {
+        return;
+    }
+    let gains: Vec<f32> = rms
+        .chunks(LEVEL_BLOCK)
+        .map(|block| {
+            let mut sorted = block.to_vec();
+            sorted.sort_by(f32::total_cmp);
+            let low = sorted[sorted.len() / 5];
+            let high = sorted[sorted.len() * 49 / 50];
+            if high >= LEVEL_MIN_SPEECH && high > low * 4.0 {
+                (LEVEL_TARGET / high).clamp(1.0, LEVEL_MAX_GAIN)
+            } else {
+                1.0
+            }
+        })
+        .collect();
+    let block = (LEVEL_BLOCK * FRAME) as f32;
+    for (i, v) in samples.iter_mut().enumerate() {
+        let pos = (i as f32 / block - 0.5).max(0.0);
+        let k = (pos as usize).min(gains.len() - 1);
+        let next = gains[(k + 1).min(gains.len() - 1)];
+        let gain = gains[k] + (next - gains[k]) * (pos - k as f32).min(1.0);
+        *v = (*v * gain).clamp(-1.0, 1.0);
+    }
+}
+
 pub fn speech_windows(samples: &[f32]) -> Vec<(usize, usize)> {
     let rms: Vec<f32> = samples
         .chunks(FRAME)
@@ -133,13 +170,10 @@ pub fn to_original(pieces: &[Piece], packed_ms: i64) -> (usize, i64) {
     (i, (original * 1000 / RATE) as i64)
 }
 
-pub fn transcribe(
-    model: &Path,
-    channels: &[Vec<f32>; 2],
-    languages: &[String],
-    vocabulary: &str,
-    mut progress: impl FnMut(f32),
-) -> Result<Vec<Segment>, String> {
+pub const CHUNK: usize = RATE * 600;
+const CUT_SEARCH: usize = RATE * 30;
+
+fn load(model: &Path) -> Result<WhisperContext, String> {
     let mut params = WhisperContextParameters::default();
     params.dtw_parameters(DtwParameters {
         mode: DtwMode::ModelPreset {
@@ -147,12 +181,95 @@ pub fn transcribe(
         },
         dtw_mem_size: 128 * 1024 * 1024,
     });
-    let ctx = WhisperContext::new_with_params(model, params).map_err(|e| e.to_string())?;
-    let mut state = ctx.create_state().map_err(|e| e.to_string())?;
+    WhisperContext::new_with_params(model, params).map_err(|e| e.to_string())
+}
+
+pub fn quietest(channels: &[Vec<f32>; 2]) -> usize {
+    let frames = channels[0].len() / FRAME;
+    (0..frames)
+        .map(|f| {
+            let energy: f32 = channels
+                .iter()
+                .flat_map(|c| &c[f * FRAME..(f + 1) * FRAME])
+                .map(|x| x * x)
+                .sum();
+            (f, energy)
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map_or(channels[0].len(), |(f, _)| f * FRAME + FRAME / 2)
+}
+
+pub fn chunks(
+    total: usize,
+    chunk: usize,
+    mut probe: impl FnMut(usize, usize) -> Result<[Vec<f32>; 2], String>,
+) -> Result<Vec<(usize, usize)>, String> {
+    let mut out = vec![];
+    let mut start = 0;
+    while start < total {
+        let mut end = (start + chunk).min(total);
+        if end < total {
+            let from = end.saturating_sub(CUT_SEARCH).max(start + 1);
+            end = from + quietest(&probe(from, end)?);
+        }
+        out.push((start, end));
+        start = end;
+    }
+    Ok(out)
+}
+
+pub fn transcribe(
+    model: &Path,
+    channels: &[Vec<f32>; 2],
+    languages: &[String],
+    vocabulary: &str,
+    mut progress: impl FnMut(f32),
+) -> Result<Vec<Segment>, String> {
+    run(
+        &load(model)?,
+        channels.clone(),
+        languages,
+        vocabulary,
+        0,
+        &mut progress,
+    )
+}
+
+pub fn transcribe_stream(
+    model: &Path,
+    total: usize,
+    mut read: impl FnMut(usize, usize) -> Result<[Vec<f32>; 2], String>,
+    languages: &[String],
+    vocabulary: &str,
+    mut progress: impl FnMut(f32),
+) -> Result<Vec<Segment>, String> {
+    let ctx = load(model)?;
+    let mut segments = vec![];
+    for (a, b) in chunks(total, CHUNK, &mut read)? {
+        let channels = read(a, b)?;
+        let offset = (a * 1000 / RATE) as i64;
+        let share = (b - a) as f32 / total.max(1) as f32;
+        let mut sub = |p: f32| progress((a as f32 / total.max(1) as f32) + p * share);
+        segments.extend(run(
+            &ctx, channels, languages, vocabulary, offset, &mut sub,
+        )?);
+    }
+    Ok(segments)
+}
+
+fn run(
+    ctx: &WhisperContext,
+    mut channels: [Vec<f32>; 2],
+    languages: &[String],
+    vocabulary: &str,
+    offset_ms: i64,
+    progress: &mut dyn FnMut(f32),
+) -> Result<Vec<Segment>, String> {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get().min(8))
         .unwrap_or(4);
     let eot = ctx.token_eot();
+    channels.iter_mut().for_each(|c| level(c));
 
     let languages: Vec<&str> = match languages.len() {
         0 => vec!["en"],
@@ -208,6 +325,8 @@ pub fn transcribe(
             );
         }
     }
+    drop(detector);
+    let mut state = ctx.create_state().map_err(|e| e.to_string())?;
     jobs.sort_by_key(|(_, _, pieces)| pieces[0].original);
     let packed_len = |pieces: &[Piece]| pieces.last().map(|p| p.packed + p.len).unwrap_or(0);
     let total: usize = jobs
@@ -275,10 +394,16 @@ pub fn transcribe(
                 };
                 segments.push(Segment {
                     speaker: speaker as i64,
-                    start_ms: words[0].start_ms,
-                    end_ms: end_ms.max(words[0].start_ms),
+                    start_ms: words[0].start_ms + offset_ms,
+                    end_ms: end_ms.max(words[0].start_ms) + offset_ms,
                     lang: lang.to_string(),
-                    words,
+                    words: words
+                        .into_iter()
+                        .map(|w| Word {
+                            start_ms: w.start_ms + offset_ms,
+                            text: w.text,
+                        })
+                        .collect(),
                 });
             }
         }
@@ -323,6 +448,47 @@ mod tests {
             .iter()
             .map(|(a, b)| (*a as f32 / RATE as f32, *b as f32 / RATE as f32))
             .collect()
+    }
+
+    #[test]
+    fn chunks_cut_at_the_quietest_moment_near_the_limit() {
+        let audio = [
+            tone(50.0),
+            silence(0.3),
+            tone(20.0),
+            silence(0.3),
+            tone(20.0),
+        ]
+        .concat();
+        let channels = [audio.clone(), vec![0.0; audio.len()]];
+        let read =
+            |a: usize, b: usize| Ok([channels[0][a..b].to_vec(), channels[1][a..b].to_vec()]);
+        let cuts = chunks(audio.len(), RATE * 60, read).unwrap();
+        let secs: Vec<f32> = cuts.iter().map(|c| c.1 as f32 / RATE as f32).collect();
+        assert_eq!(cuts.len(), 2);
+        assert!((50.0..50.3).contains(&secs[0]), "{secs:?}");
+        assert_eq!(cuts[1], (cuts[0].1, audio.len()));
+    }
+
+    #[test]
+    fn level_lifts_quiet_speech_and_leaves_silence_alone() {
+        let quiet: Vec<f32> = [silence(1.5), tone(1.0), silence(1.5)]
+            .concat()
+            .repeat(4)
+            .iter()
+            .map(|x| x * 0.02)
+            .collect();
+        assert!(speech_windows(&quiet).is_empty());
+        let mut lifted = quiet.clone();
+        level(&mut lifted);
+        assert_eq!(speech_windows(&lifted).len(), 4);
+
+        let mut hiss: Vec<f32> = (0..RATE * 12)
+            .map(|i| ((i * 7919) % 200) as f32 * 1e-6)
+            .collect();
+        let before = hiss.clone();
+        level(&mut hiss);
+        assert_eq!(hiss, before);
     }
 
     #[test]

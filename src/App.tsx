@@ -5,8 +5,10 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { T, TOUR_STEPS, type Lang } from "./i18n";
 import { api, type Level, type Permissions, type Recording, type Settings, type Tag, type Theme } from "./lib/api";
-import { Ctx, type AppCtx, type Playback, type View } from "./lib/app";
+import { Ctx, type AppCtx, type Playback, type Toast, type ToastAction, type View } from "./lib/app";
 import { useTauriEvent } from "./lib/util";
+import { levelStore } from "./lib/level";
+import { clock } from "./lib/clock";
 import { Icon, type TagOps } from "./components/Controls";
 import { Picker } from "./components/Picker";
 import { Pip, PlayPip } from "./components/Floating";
@@ -34,16 +36,16 @@ function Shell({ initial }: { initial: Settings }) {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
-  const [level, setLevel] = useState<Level>({ mic: 0, sys: 0, ms: 0 });
   const [paused, setPausedState] = useState(false);
   const [progress, setProgress] = useState<Record<number, number>>({});
   const [playback, setPlayback] = useState<Playback | null>(null);
-  const [time, setTime] = useState(0);
   const [modelReady, setModelReady] = useState(false);
   const [perms, setPerms] = useState<Permissions | null>(null);
   const [picker, setPicker] = useState<DOMRect | null>(null);
   const [tour, setTour] = useState<number | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimer = useRef<number>(undefined);
+  const [bump, setBump] = useState<{ id: number; n: number } | null>(null);
   const [update, setUpdate] = useState<Update | null>(null);
   const [section, setSection] = useState<string>("general");
   const audio = useRef<HTMLAudioElement>(null);
@@ -54,10 +56,27 @@ function Shell({ initial }: { initial: Settings }) {
   const t = T[lang];
   const theme: Theme = { ...DEFAULT_THEME, ...settings.ui?.theme };
 
-  const notify = useCallback((m: unknown) => {
-    setToast(String(m));
-    window.setTimeout(() => setToast(null), 3000);
+  const notify = useCallback((m: unknown, action?: ToastAction) => {
+    setToast({ text: String(m), action });
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), action ? 8000 : 3000);
   }, []);
+  const bumpItem = useCallback((id: number, n: number) => {
+    setBump({ id, n });
+    window.setTimeout(() => setBump((b) => (b?.id === id ? null : b)), 1800);
+  }, []);
+  useEffect(() => {
+    const action = toast?.action;
+    if (!action) return;
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "z" || !e.metaKey || e.shiftKey || (e.target as HTMLElement).closest?.("input, textarea")) return;
+      e.preventDefault();
+      setToast(null);
+      action.run();
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [toast]);
 
   const persist = (next: Settings, delay = 0) => {
     window.clearTimeout(saveTimer.current);
@@ -101,10 +120,15 @@ function Shell({ initial }: { initial: Settings }) {
       .catch(() => {});
   }, [JSON.stringify(theme), lang]);
 
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearch(query), query ? 160 : 0);
+    return () => window.clearTimeout(id);
+  }, [query]);
   const loadList = useCallback(() => {
-    api.listRecordings(query, tagFilter).then(setRecordings).catch(notify);
+    api.listRecordings(search, tagFilter).then(setRecordings).catch(notify);
     api.allTags().then(setTags).catch(notify);
-  }, [query, tagFilter]);
+  }, [search, tagFilter]);
   useEffect(loadList, [loadList]);
   const refreshPerms = useCallback(() => {
     api.permissions().then(setPerms).catch(() => {});
@@ -135,9 +159,9 @@ function Shell({ initial }: { initial: Settings }) {
   useTauriEvent<number | null>("recorder-state", (id) => {
     setActiveId(id);
     setPausedState(false);
-    setLevel({ mic: 0, sys: 0, ms: 0 });
+    levelStore.set({ mic: 0, sys: 0, ms: 0 });
   });
-  useTauriEvent<Level>("recorder-level", setLevel);
+  useTauriEvent<Level>("recorder-level", levelStore.set);
   useTauriEvent<string>("recorder-error", notify);
   useTauriEvent<[number, number]>("transcribe-progress", ([id, p]) => setProgress((x) => ({ ...x, [id]: p })));
   useTauriEvent("open-draft", newRecording);
@@ -163,7 +187,7 @@ function Shell({ initial }: { initial: Settings }) {
     el.src = convertFileSrc(path);
     el.playbackRate = playback?.rate ?? 1;
     setPlayback({ id, playing: false, rate: playback?.rate ?? 1, pinned: false });
-    setTime(0);
+    clock.set(id, 0);
     return el;
   };
   const play = async (id: number) => {
@@ -179,7 +203,7 @@ function Shell({ initial }: { initial: Settings }) {
     const el = await loadSource(id);
     const apply = () => {
       el.currentTime = ms / 1000;
-      setTime(ms);
+      clock.set(id, ms);
     };
     if (el.readyState >= 1) apply();
     else el.addEventListener("loadedmetadata", apply, { once: true });
@@ -190,9 +214,10 @@ function Shell({ initial }: { initial: Settings }) {
   };
   useEffect(() => {
     if (!playback?.playing) return;
-    const id = window.setInterval(() => setTime((audio.current?.currentTime ?? 0) * 1000), 80);
+    const pid = playback.id;
+    const id = window.setInterval(() => clock.set(pid, (audio.current?.currentTime ?? 0) * 1000), 80);
     return () => window.clearInterval(id);
-  }, [playback?.playing]);
+  }, [playback?.playing, playback?.id]);
 
   const remove = (id: number) => {
     if (playback?.id === id) {
@@ -284,13 +309,11 @@ function Shell({ initial }: { initial: Settings }) {
     tags,
     tagOps,
     activeId,
-    level,
     paused,
     setPaused,
     stop,
     progress,
     playback,
-    time,
     play,
     toggle,
     seek,
@@ -302,6 +325,7 @@ function Shell({ initial }: { initial: Settings }) {
     startTour: () => setTour(0),
     notify,
     remove,
+    bump: bumpItem,
   };
 
   const liveRec = recordings.find((r) => r.id === activeId);
@@ -329,6 +353,7 @@ function Shell({ initial }: { initial: Settings }) {
 
   return (
     <Ctx.Provider value={ctx}>
+      <div className="dragzone" data-tauri-drag-region />
       <div className={"app" + (view.name === "home" ? " home" : "")}>
         {view.name !== "home" && (
           <aside className="side">
@@ -369,7 +394,7 @@ function Shell({ initial }: { initial: Settings }) {
                         <div key={label} style={{ display: "contents" }}>
                           <div className="group">{label}</div>
                           {items.map((r) => (
-                            <button key={r.id} className="item" aria-current={view.name === "rec" && view.id === r.id} onClick={() => go({ name: "rec", id: r.id })}>
+                            <button key={r.id} data-id={r.id} className={"item" + (bump?.id === r.id ? " bumped" : "")} data-bump={bump?.id === r.id ? "+" + bump.n : undefined} aria-current={view.name === "rec" && view.id === r.id} onClick={() => go({ name: "rec", id: r.id })}>
                               <Notch tags={r.tags} />
                               <span className="t">{r.title || t.untitled}</span>
                               <RecMeta r={r} />
@@ -385,13 +410,6 @@ function Shell({ initial }: { initial: Settings }) {
           </aside>
         )}
         <main className="main" ref={mainRef}>
-          {view.name !== "home" && (
-            <div className="homefab">
-              <button onClick={() => go({ name: "home" })} title={t.home} aria-label={t.home}>
-                ←
-              </button>
-            </div>
-          )}
           {update && view.name === "home" && (
             <div className="updatebar">
               <b>Muesli {update.version}</b> {t.updateAvailable}
@@ -422,21 +440,20 @@ function Shell({ initial }: { initial: Settings }) {
         onPlay={() => setPlayback((p) => p && { ...p, playing: true })}
         onPause={() => {
           setPlayback((p) => p && { ...p, playing: false });
-          setTime((audio.current?.currentTime ?? 0) * 1000);
+          if (playback) clock.set(playback.id, (audio.current?.currentTime ?? 0) * 1000);
         }}
-        onSeeked={() => setTime((audio.current?.currentTime ?? 0) * 1000)}
+        onSeeked={() => playback && clock.set(playback.id, (audio.current?.currentTime ?? 0) * 1000)}
       />
       {liveRec && !onLivePage && (
         <Pip
           t={t}
           title={liveRec.title}
           them={liveRec.them}
-          level={level}
           paused={paused}
           setPaused={setPaused}
           onStop={stop}
           onOpen={() => go({ name: "rec", id: liveRec.id })}
-          onMark={(body) => api.addNote(liveRec.id, level.ms, body).catch(notify)}
+          onMark={(body, ms) => api.addNote(liveRec.id, ms, body).catch(notify)}
         />
       )}
       {playRec && playback.pinned && !(view.name === "rec" && view.id === playback.id) && (
@@ -445,7 +462,7 @@ function Shell({ initial }: { initial: Settings }) {
           title={playRec.title}
           them={playRec.them}
           duration={playRec.durationMs}
-          time={time}
+          id={playRec.id}
           playing={playback.playing}
           stacked={!!liveRec && !onLivePage}
           onToggle={toggle}
@@ -463,7 +480,17 @@ function Shell({ initial }: { initial: Settings }) {
       )}
       {toast && (
         <div className="toast" role="status">
-          {toast}
+          {toast.text}
+          {toast.action && (
+            <button
+              onClick={() => {
+                setToast(null);
+                toast.action!.run();
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       )}
     </Ctx.Provider>

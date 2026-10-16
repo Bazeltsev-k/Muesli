@@ -50,6 +50,7 @@ pub struct Recording {
     pub tags: Vec<String>,
     pub languages: Vec<String>,
     pub them: String,
+    pub speakers: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -58,7 +59,7 @@ pub struct Tag {
     pub color: String,
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
     pub id: i64,
@@ -136,16 +137,23 @@ pub fn open(path: &Path) -> Result<Connection> {
         )?;
         conn.pragma_update(None, "user_version", 3)?;
     }
+    if version < 4 {
+        conn.execute_batch(
+            "ALTER TABLE recordings ADD COLUMN speakers TEXT NOT NULL DEFAULT '[]'",
+        )?;
+        conn.pragma_update(None, "user_version", 4)?;
+    }
     Ok(conn)
 }
 
 const SELECT_RECORDING: &str = "
-SELECT r.id, r.title, r.created_at, r.duration_ms, r.status, r.error, r.note, r.languages, r.them,
+SELECT r.id, r.title, r.created_at, r.duration_ms, r.status, r.error, r.note, r.languages, r.them, r.speakers,
   (SELECT group_concat(t.name, char(31)) FROM recording_tags rt JOIN tags t ON t.id = rt.tag_id WHERE rt.recording_id = r.id)
 FROM recordings r";
 
 fn row_to_recording(row: &rusqlite::Row) -> Result<Recording> {
-    let tags: Option<String> = row.get(9)?;
+    let tags: Option<String> = row.get(10)?;
+    let speakers: String = row.get(9)?;
     let languages: String = row.get(7)?;
     let mut tags: Vec<String> = tags
         .map(|t| t.split('\u{1f}').map(String::from).collect())
@@ -166,6 +174,7 @@ fn row_to_recording(row: &rusqlite::Row) -> Result<Recording> {
             .map(String::from)
             .collect(),
         them: row.get(8)?,
+        speakers: serde_json::from_str(&speakers).unwrap_or_default(),
     })
 }
 
@@ -196,6 +205,14 @@ pub fn set_created_at(conn: &Connection, id: i64, created_at: i64) -> Result<()>
     conn.execute(
         "UPDATE recordings SET created_at = ?2 WHERE id = ?1",
         params![id, created_at],
+    )?;
+    Ok(())
+}
+
+pub fn set_speakers(conn: &Connection, id: i64, speakers: &[String]) -> Result<()> {
+    conn.execute(
+        "UPDATE recordings SET speakers = ?2 WHERE id = ?1",
+        params![id, serde_json::to_string(speakers).unwrap()],
     )?;
     Ok(())
 }
@@ -396,6 +413,30 @@ pub fn get_segments(conn: &Connection, id: i64) -> Result<Vec<Segment>> {
     rows.collect()
 }
 
+pub fn replace_notes(conn: &mut Connection, id: i64, notes: &[Note]) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM notes WHERE recording_id = ?1", [id])?;
+    for n in notes {
+        tx.execute(
+            "INSERT INTO notes (recording_id, at_ms, body) VALUES (?1, ?2, ?3)",
+            params![id, n.at_ms, n.body],
+        )?;
+    }
+    tx.commit()
+}
+
+pub fn replace_comments(conn: &mut Connection, id: i64, comments: &[Comment]) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM comments WHERE recording_id = ?1", [id])?;
+    for c in comments {
+        tx.execute(
+            "INSERT INTO comments (recording_id, word_start, word_end, body) VALUES (?1, ?2, ?3, ?4)",
+            params![id, c.word, c.end, c.body],
+        )?;
+    }
+    tx.commit()
+}
+
 pub fn add_note(conn: &Connection, id: i64, at_ms: i64, body: &str) -> Result<Note> {
     conn.execute(
         "INSERT INTO notes (recording_id, at_ms, body) VALUES (?1, ?2, ?3)",
@@ -453,6 +494,11 @@ mod tests {
         .unwrap();
         let b = create_recording(&conn, "1:1", 2, "draft", &langs(&["uk"]), "").unwrap();
         set_them(&conn, b, "Max").unwrap();
+        set_speakers(&conn, b, &langs(&["", "Max", "Olena"])).unwrap();
+        assert_eq!(
+            get_recording(&conn, b).unwrap().unwrap().speakers,
+            langs(&["", "Max", "Olena"])
+        );
         assert_eq!(get_recording(&conn, b).unwrap().unwrap().status, "draft");
         assert_eq!(list_recordings(&conn, "max", None).unwrap()[0].id, b);
         set_languages(&conn, a, &langs(&["en", "ru"])).unwrap();
